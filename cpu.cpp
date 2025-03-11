@@ -128,6 +128,12 @@ int testStateVectorsEqual(StateVector SV, StateVector SV_expected, string test_n
 }
 
 //Operations
+/* Note:
+  These functions (tensorProduct, tensorSeries, matrixVectorMultiply, and possibly matrixAddition but possibly not necessary) are the functions we
+  should basically push to be processed effic. via CUDA. The idea here was to abstract these from the actual circuit running code and thus should be pretty
+  straight forward to just parallize in CUDA and plug right back in here hopefully. That would remove the bulk of the heavy lifting from the CPU and give us
+  plenty of different ways to optimize via CUDA to satisfy the project requirements.
+*/
 Matrix tensorProduct(Matrix M, Matrix N){
   //M tensor N = P
 
@@ -205,13 +211,15 @@ Matrix matrixAddition(Matrix M, Matrix N) {
   return P;
 }
 
-/*
+/* Note:
   the process here allows us to support any configuration of a single control/target controlled matrix.
   it has to be done in this goofy ass/mildly hardcoded way.
 
-  it's somewhat of an odd process to create arbitrary controlled operations that scales exponentially with the # of control qubits you have, so for right 
-  now (until I can figure out if it's feasible to offer inherent support for something like the Toffoli operation) any multi-control gate will have to be
+  it's somewhat of an odd process to create arbitrary controlled operations that scales exponentially with the # of control qubits you want to encode for a given slice,
+  so for right now (until I can figure out if it's feasible to offer inherent support for something like the Toffoli operation) any multi-control gate will have to be
   decomposed into a set of operations that are supported.
+
+  
 */
 Matrix collapseControlledMatrixVector(vector<Matrix> M_Vec, Matrix U, int control, int target) {
     vector<Matrix> TS_Ctrl(M_Vec);
