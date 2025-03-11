@@ -20,15 +20,19 @@ using Matrix = std::vector<std::vector<Complex>>;
 
 using StateVector = vector<Complex>;
 
-// using WireConfig = 
-
 // Basic Gate Operations
 static const Matrix I = {{Complex(1, 0), Complex(0, 0)},
                          {Complex(0, 0), Complex(1, 0)}};
 static const Matrix H = {{Complex(1, 0), Complex(1, 0)},
                          {Complex(1, 0), Complex(-1, 0)}};
+  //this is not technically correct, needs the 1/sqrt(2). fine for testing
 static const Matrix X = {{Complex(0, 0), Complex(1, 0)},
                          {Complex(1, 0), Complex(0, 0)}};
+static const Matrix Z = {{Complex(1, 0), Complex(0, 0)},
+                         {Complex(0, 0), Complex(-1, 0)}};
+static const Matrix S = {{Complex(1, 0), Complex(0, 0)},
+                         {Complex(0, 0), Complex(0, 1)}};
+
 
 //Projection Operations
 static const Matrix Proj_0 = {{Complex(1, 0), Complex(0, 0)},
@@ -200,16 +204,31 @@ Matrix matrixAddition(Matrix M, Matrix N) {
   return P;
 }
 
-Matrix collapseControlledOperation(Matrix M, int control, int target, int num_of_wires) {
-    vector<Matrix> TS_Ctrl(num_of_wires, I);
-    vector<Matrix> TS_Targ(num_of_wires, I);
+// Matrix collapseControlledOperation(Matrix M, int control, int target, int num_of_wires) {
+//     vector<Matrix> TS_Ctrl(num_of_wires, I);
+//     vector<Matrix> TS_Targ(num_of_wires, I);
 
-    // cout << "Size " << num_of_wires << "\n";
+//     // cout << "Size " << num_of_wires << "\n";
 
-    // cout << "Target Wire Index " << target << "\n";
-    TS_Ctrl.at(control) = Proj_0;
-    TS_Targ.at(control) = Proj_1;
-    TS_Targ.at(target) = M;
+//     // cout << "Target Wire Index " << target << "\n";
+//     TS_Ctrl.at(control) = Proj_0;
+//     TS_Targ.at(control) = Proj_1;
+//     TS_Targ.at(target) = M;
+
+//     return matrixAddition(tensorSeries(TS_Ctrl), tensorSeries(TS_Targ));
+// }
+
+Matrix collapseControlledMatrixVector(vector<Matrix> M_Vec, Matrix U, vector<int> control, vector<int> target) {
+    vector<Matrix> TS_Ctrl(M_Vec);
+    vector<Matrix> TS_Targ(M_Vec);
+
+    for(int i : control) {
+      TS_Ctrl.at(i) = Proj_0;
+      TS_Targ.at(i) = Proj_1;
+    }
+    for(int i : target) {
+      TS_Targ.at(i) = U;
+    }
 
     return matrixAddition(tensorSeries(TS_Ctrl), tensorSeries(TS_Targ));
 }
@@ -364,8 +383,9 @@ class ControlledGate : public Gate::Interface {
 class TimeSlice {
   public:
     vector<Gate> gates;
+    vector<Matrix> matrices;
     int nQubits;
-    Matrix matrix;
+    Matrix unitary;
 
     //if including explicit identity gates
     TimeSlice(vector<Gate> _gates) {
@@ -373,8 +393,33 @@ class TimeSlice {
         nQubits = _gates.size();
     };
 
-    TimeSlice(vector<Gate> _gates, int _nQubits) : gates(_gates), nQubits(_nQubits){
-    };
+    TimeSlice(vector<Gate> _gates, int _nQubits) : gates(_gates), nQubits(_nQubits){};
+
+    Matrix processGates(vector<Gate> _gates, int num_of_wires) {
+      vector<Matrix> M_Vec(num_of_wires, I);
+      vector<Gate> control_queue;
+      for(Gate g : _gates) {
+        // if gate is control
+        if(g.type() == "controlled"){
+          control_queue.emplace_back(g);
+        // else place it's operation in the corresponding position
+        } else {
+          M_Vec.at(g.wire()) = g.toMatrix();
+        }
+      }
+      if(!control_queue.empty()) {
+        Gate g = control_queue.at(0);
+
+        //replace
+        vector<int> controls;
+        vector<int> targets;
+        controls.emplace_back(g.wire());
+        targets.emplace_back(g.targetWire());
+        return collapseControlledMatrixVector(M_Vec, g.toMatrix(), controls, targets);
+      } else {
+        return tensorSeries(M_Vec);
+      }
+    }
 
     Matrix at(int index) {
       return gates.at(index).toMatrix();
@@ -386,14 +431,7 @@ class TimeSlice {
 
     //returns the combined unitary for this timeslice 
     Matrix toMatrix() {
-        vector<Matrix> M_Vec;
-        for(Gate g : gates) {
-            if(g.type() == "controlled") {
-                return collapseControlledOperation(g.toMatrix(), g.wire(), g.targetWire(), nQubits);
-            } 
-            M_Vec.emplace_back(g.toMatrix());
-        }
-        return tensorSeries(M_Vec);
+        return processGates(gates, nQubits);
     }
 };
 
@@ -409,10 +447,6 @@ class Circuit {
       nQubits = _nQubits;
       slices = _slices;
     }
-
-    // Gate gateAt(int sliceIdx, int wireIdx) {
-    //     return slices.at(sliceIdx).at(wireIdx);
-    // }
 
     // Transformation //
 
@@ -446,34 +480,9 @@ class Circuit {
     }
 };
 
-// Matrix controlledOperation(Matrix u, int control_index, int target_index, int num_of_wires){
-//   //this needs to be update but since we usually only perform these multi-qubit controlled operations in their own timeslice, it might be okay?
-//   // Matrix I = {{Complex(1, 0), Complex(0, 0)},
-//   //             {Complex(0, 0), Complex(1, 0)}};
-
-//   // Timeslice TS_Ctrl = Timeslice(num_of_wires, I);
-//   // Timeslice TS_Targ = Timeslice(num_of_wires, I);
-
-//   TimeSlice TS_Ctrl(vector<Gate>(num_of_wires, Gate(I)));
-//   TimeSlice TS_Targ(vector<Gate>(num_of_wires, Gate(I)));
-
-//   // TS_Ctrl.gates = vector<Matrix>(num_of_wires, I);
-//   // TS_Targ.gates = vector<Matrix>(num_of_wires, I);
-
-//   TS_Ctrl.gates.at(control_index) = projectionMatrixOf(0);
-//   TS_Targ.gates.at(control_index) = projectionMatrixOf(1);
-//   TS_Targ.gates.at(target_index) = u;
-
-//   // Matrix TS_Contr = matrixAddition(TS_Ctrl.unitary(), TS_Targ.unitary());
-//   Matrix TS_Contr = matrixAddition(tensorSeries(TS_Ctrl), tensorSeries(TS_Targ));
-
-//   return TS_Contr;
-// }
-
 int main(void) {
-    
     // Slices & Tensoring //
-    TimeSlice TS_0({new SingleQubitGate(I, 0), new SingleQubitGate(I, 1), new SingleQubitGate(I, 2)}, 2);
+    TimeSlice TS_0({}, 3);
     Matrix TestIII = {{Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
                      {Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
                      {Complex(0, 0), Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
@@ -483,8 +492,8 @@ int main(void) {
                      {Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0), Complex(0, 0)},
                      {Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0)}};
     testMatrixEqual(TS_0.toMatrix(), TestIII, "I ⊗ I ⊗ I");
-
-    TimeSlice TS_1({new SingleQubitGate(I, 0), new SingleQubitGate(I, 1), new SingleQubitGate(X, 2)}, 2);
+    
+    TimeSlice TS_1({new SingleQubitGate(X, 2)}, 3);
     Matrix TestIIX = {{Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
                         {Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
                         {Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
@@ -497,15 +506,38 @@ int main(void) {
     
     testMatrixEqual(TS_1.toMatrix(), TestIIX, "I ⊗ I ⊗ X");
 
+    TimeSlice TS_2({new SingleQubitGate(X, 0), new ControlledGate(X, 2, 1)}, 3);
+    Matrix TestXICX = {{Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
+                        {Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0)},
+                        {Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0), Complex(0, 0)},
+                        {Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0)},
+                        {Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
+                        {Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
+                        {Complex(0, 0), Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
+                        {Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)}};
+    testMatrixEqual(TS_2.toMatrix(), TestXICX, "X ⊗ CX(2, 1)");
+    
     // Circuits //
 
-    Circuit Circ_1({TimeSlice({new SingleQubitGate(H, 0), new SingleQubitGate(I, 1)}),
-                    TimeSlice({new SingleQubitGate(I, 0), new SingleQubitGate(H, 1)})}, 2);
+    Circuit Circ_1({TimeSlice({new SingleQubitGate(X, 0)}, 2),
+                   TimeSlice({new SingleQubitGate(X, 1)}, 2)}, 2);
+    // printStateVector(Circ_1.applyTransformations(makeStateVector(2)));
+    StateVector Ket11 = {Complex(0,0), Complex(0,0), Complex(0,0),Complex(1,0)};
+    testStateVectorsEqual(Circ_1.applyTransformations(makeStateVector(2)), Ket11, "(I ⊗ X((X ⊗ I)|00>))");
 
-    Circuit Circ_2({TimeSlice({new SingleQubitGate(H, 0), new SingleQubitGate(I, 1)}),
-                    TimeSlice({new ControlledGate(X, 0, 1)}, 2)}, 2);
+    TimeSlice Circ_2_TS_0({new SingleQubitGate(X, 1)}, 2);
+    TimeSlice Circ_2_TS_1({new ControlledGate(X, 0, 1)}, 2);
+    TimeSlice Circ_2_TS_2({new ControlledGate(X, 1, 0)}, 2);
+    Circuit Circ_2({Circ_2_TS_0, Circ_2_TS_1, Circ_2_TS_2}, 2);
+    StateVector Ket01 = {Complex(0,0), Complex(1,0), Complex(0,0),Complex(0,0)};
+    testStateVectorsEqual(Circ_2.applyTransformationToSlice(makeStateVector(2),0), Ket01, "(I ⊗ X)|00>))");
+    testStateVectorsEqual(Circ_2.applyTransformationToSlice(makeStateVector(2),1), Ket01, "(CX(0,1))|01>))");
+    testStateVectorsEqual(Circ_2.applyTransformationToSlice(makeStateVector(2),2), Ket11, "(CX(1,0)|01>))");
+
+    // Circuit Circ_2({TimeSlice({new SingleQubitGate(H, 0), new SingleQubitGate(I, 1)}),
+    //                 TimeSlice({new ControlledGate(X, 0, 1)}, 2)}, 2);
     // printStateVector(Circ_2.applyTransformations(makeStateVector(2)));
-
+    /*
     Circuit Circ_3({TimeSlice({new SingleQubitGate(H, 0), new SingleQubitGate(I, 1)}),
                     TimeSlice({new ControlledGate(X, 0, 1)}, 2),
                     TimeSlice({new ControlledGate(X, 0, 1)}, 2),
@@ -519,5 +551,6 @@ int main(void) {
                 TimeSlice({new ControlledGate(X, 1, 2)}, 3)},
                 3);
     printStateVector(Circ_4.applyTransformations(makeStateVector(3)));
+    */
 
 }
