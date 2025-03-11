@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <map>
 
 using namespace std;
 
@@ -18,6 +19,22 @@ class Complex {
 using Matrix = std::vector<std::vector<Complex>>;
 
 using StateVector = vector<Complex>;
+
+// using WireConfig = 
+
+// Basic Gate Operations
+static const Matrix I = {{Complex(1, 0), Complex(0, 0)},
+                         {Complex(0, 0), Complex(1, 0)}};
+static const Matrix H = {{Complex(1, 0), Complex(1, 0)},
+                         {Complex(1, 0), Complex(-1, 0)}};
+static const Matrix X = {{Complex(0, 0), Complex(1, 0)},
+                         {Complex(1, 0), Complex(0, 0)}};
+
+//Projection Operations
+static const Matrix Proj_0 = {{Complex(1, 0), Complex(0, 0)},
+                              {Complex(0, 0), Complex(0, 0)}};
+static const Matrix Proj_1 = {{Complex(0, 0), Complex(0, 0)},
+                              {Complex(0, 0), Complex(1, 0)}};
 
 //Helper Functions
 void printStateVector(StateVector SV) {
@@ -141,7 +158,13 @@ Matrix tensorProduct(Matrix M, Matrix N){
   return P;
 }
 
-// Matrix tensorSeries(vector<)
+Matrix tensorSeries(vector<Matrix> M_Vec) {
+    Matrix U = M_Vec.at(0);
+    for(int i = 1; i < M_Vec.size(); i++) {
+        U = tensorProduct(U, M_Vec.at(i));
+    }
+    return U;
+}
 
 StateVector matrixVectorMultiply(StateVector SV, Matrix M) { 
   //init output state vector to all zeros
@@ -177,66 +200,167 @@ Matrix matrixAddition(Matrix M, Matrix N) {
   return P;
 }
 
-// Basic Gate Operations
-static const Matrix I = {{Complex(1, 0), Complex(0, 0)},
-                         {Complex(0, 0), Complex(1, 0)}};
-static const Matrix H = {{Complex(1, 0), Complex(1, 0)},
-                         {Complex(1, 0), Complex(-1, 0)}};
-static const Matrix X = {{Complex(0, 0), Complex(1, 0)},
-                         {Complex(1, 0), Complex(0, 0)}};
+Matrix collapseControlledOperation(Matrix M, int control, int target, int num_of_wires) {
+    vector<Matrix> TS_Ctrl(num_of_wires, I);
+    vector<Matrix> TS_Targ(num_of_wires, I);
 
-//Projection Operations
-static const Matrix Proj_0 = {{Complex(1, 0), Complex(0, 0)},
-                              {Complex(0, 0), Complex(0, 0)}};
-static const Matrix Proj_1 = {{Complex(0, 0), Complex(0, 0)},
-                              {Complex(0, 0), Complex(1, 0)}};
+    // cout << "Size " << num_of_wires << "\n";
+
+    // cout << "Target Wire Index " << target << "\n";
+    TS_Ctrl.at(control) = Proj_0;
+    TS_Targ.at(control) = Proj_1;
+    TS_Targ.at(target) = M;
+
+    return matrixAddition(tensorSeries(TS_Ctrl), tensorSeries(TS_Targ));
+}
+
+
 
 // Classes
 class Gate {
-public:
-  Matrix matrix;
-  int is_control = 0;
-  Gate(Matrix _matrix): matrix(_matrix) {};
-  Gate(Matrix _matrix, int _is_control): matrix(_matrix), is_control(_is_control) {};
+    public:
+        struct Interface
+        {
+            virtual string type() const = 0;
+            virtual Matrix toMatrix() const = 0;
+            virtual int wire() const = 0;
 
-  virtual void toMatrix() {
-    cout << "Base Class Gate Matrix";
-  }
+            virtual ~Interface() = default;
 
-  void print() {
-    printMatrix(matrix);
-  }
+            virtual int targetWire() const {
+                return -1;
+            }
+
+            virtual void print() const {
+                printMatrix(toMatrix());
+            }
+        };
+        std::shared_ptr<const Interface> _p;
+    public:
+        Gate(Interface* p) : _p(p){
+        }
+        string type() const {
+            return _p->type();
+        }
+        Matrix toMatrix() const {
+            return _p->toMatrix();
+        }
+        int wire() const {
+            return _p->wire();
+        }
+        int targetWire() const {
+            return _p->targetWire();
+        }
+        void print() const {
+            _p->print();
+        }
 };
 
-// class Gate {
-//     virtual void toMatrix() = 0;
-//     virtual void print();
-// }
+class SingleQubitGate : public Gate::Interface {
+    public: 
+        Matrix matrix;
+        int wireIdx;
 
-class ControlledGate : public Gate {
-public:
-    int controlWireIdx;
-    int targetWireIdx;
+        SingleQubitGate(Matrix _matrix, int _wireIdx) 
+            : matrix(_matrix), wireIdx(_wireIdx) {};
 
-    void toMatrix() override {
-        cout << "Controlled Gate Matrix";
-    }
+        string type() const override {
+            return "single";
+        };
 
-    ControlledGate(Matrix _matrix, int _controlWireIdx, int _targetWireIdx) : Gate(_matrix, 1) {
-        controlWireIdx = _controlWireIdx;
-        targetWireIdx = _targetWireIdx;
-    }
+        Matrix toMatrix() const override {
+            return matrix;
+        };
+
+        int wire() const override {
+            return wireIdx;
+        }
 };
 
-class OneQubitGate : public Gate {
-public:
-  int wireIdx;
-//   int symbol;
-  OneQubitGate(Matrix _matrix, int _wireIdx) : Gate(_matrix, 0) {
-    wireIdx = _wireIdx;
-  };
+class ControlledGate : public Gate::Interface {
+    public:
+        Matrix matrix;
+        // WireConfig config;
+        int wireIdx;
+        int targetWireIdx;
+
+        ControlledGate(Matrix _matrix, int _wireIdx, int _targetWireIdx) 
+            : matrix(_matrix), wireIdx(_wireIdx), targetWireIdx(_targetWireIdx) {};
+        
+        string type() const override {
+            return "controlled";
+        }
+
+        Matrix toMatrix() const override {
+            return matrix;
+        }
+
+        int wire() const override {
+            return wireIdx;
+        }
+
+        int targetWire() const override {
+            return targetWireIdx;
+        }
 };
 
+/*
+    // class ControlledGate : public Gate {
+    // public:
+    //     const string gate_type = "control";
+    //     int controlWireIdx;
+    //     int targetWireIdx;
+    //     Matrix matrix;
+
+    //     // ControlledGate(Matrix _matrix, int _controlWireIdx, int _targetWireIdx) : Gate(_matrix, _controlWireIdx) {
+    //     //     targetWireIdx = _targetWireIdx;
+    //     // }
+
+    //     void print() override {
+    //         cout << "Controlled Gate Matrix";
+    //     }
+
+    //     Matrix toMatrix() override {
+    //         return matrix;
+    //     }
+
+    //     string type() const override {
+    //         return gate_type;
+    //     }
+
+    //     ControlledGate(Matrix _matrix, int _controlWireIdx, int _targetWireIdx) {
+    //         controlWireIdx = _controlWireIdx;
+    //         targetWireIdx = _targetWireIdx;
+    //         matrix = _matrix;
+    //     }
+    // };
+
+    // class OneQubitGate : public Gate {
+    // public:
+    //   const string gate_type = "single";
+    //   int wireIdx;
+    //   Matrix matrix;
+
+    // //   OneQubitGate(Matrix _matrix, int _wireIdx) : Gate(_matrix, _wireIdx) {};
+
+    //   void print() override {
+    //     cout << "Single Qubit Gate";
+    //   }
+
+    //   Matrix toMatrix() override {
+    //     return matrix;
+    //   }
+
+    //   string type() const override {
+    //     return gate_type;
+    //   }
+
+    //   OneQubitGate(Matrix _matrix, int _wireIdx) {
+    //     wireIdx = _wireIdx;
+    //     matrix = _matrix;
+    //   };
+    // };
+*/
 class TimeSlice {
   public:
     vector<Gate> gates;
@@ -249,15 +373,11 @@ class TimeSlice {
         nQubits = _gates.size();
     };
 
-    // TimeSlice(vector<Gate> _gates, int nQubits) {
-    //     gates = vector<Gate>(nQubits, I);
-    //     for(Gate g : _gates){
-    //         gates.at(g.)
-    //     }
-    // }
+    TimeSlice(vector<Gate> _gates, int _nQubits) : gates(_gates), nQubits(_nQubits){
+    };
 
     Matrix at(int index) {
-      return gates.at(index).matrix;
+      return gates.at(index).toMatrix();
     }
 
     int size() {
@@ -266,52 +386,16 @@ class TimeSlice {
 
     //returns the combined unitary for this timeslice 
     Matrix toMatrix() {
-        int n = gates.size();
-        Matrix U = gates.at(0).matrix;
-        if(n < 2){
-            return U;
-        } else {
-            for(int i = 1; i < gates.size(); i++) {
-                // auto gate = gates;
-                // if(gates.at(i).is_control == 1) {
-                //     U = controlledOperation(gates.at(i).matrix, gates.at(i))
-                // }
-                U = tensorProduct(U, gates.at(i).matrix);
-            }
-        //     for(auto gate : gates) { 
-        //         if(gate.is_control == 1) {
-        //             ControlledGate c_gate = (ControlledGate)gate;
-        //             // u = controlledOperation(gate.matrix, gates.at(i))
-        //             TimeSlice TS_Ctrl(vector<Gate>(nQubits, Gate(I)));
-        //             TimeSlice TS_Targ(vector<Gate>(nQubits, Gate(I)));
-
-        //             TS_Ctrl.gates.at(c_gate.controlWireIdx) = Gate(Proj_0);
-        //             TS_Targ.gates.at(c_gate.controlWireIdx) = Gate(Proj_1);
-        //             TS_Targ.gates.at(c_gate.targetWireIdx) = Gate(c_gate.matrix);
-
-        //             U = matrixAddition(TS_Ctrl.toMatrix(), TS_Targ.toMatrix());
-        //             // matrix = U;
-        //             return U;
-        //         } else {
-        //             U = tensorProduct(U, gate.matrix);
-        //         }
-        //     }
+        vector<Matrix> M_Vec;
+        for(Gate g : gates) {
+            if(g.type() == "controlled") {
+                return collapseControlledOperation(g.toMatrix(), g.wire(), g.targetWire(), nQubits);
+            } 
+            M_Vec.emplace_back(g.toMatrix());
         }
-        matrix = U;
-        return U;
+        return tensorSeries(M_Vec);
     }
 };
-
-// vector<Matrix> collapseTimeslice(TimeSlice TS) {
-//     vector<Matrix> ts_m;
-//     for(Gate G: TS.gates) {
-//         if(G.is_control == 1) {
-            
-//         } else {
-//             ts_m.push(G.matrix);
-//         }
-//     }
-// }
 
 class Circuit {
   public:
@@ -326,23 +410,15 @@ class Circuit {
       slices = _slices;
     }
 
-    Gate gateAt(int sliceIdx, int wireIdx) {
-        return slices.at(sliceIdx).at(wireIdx);
-    }
+    // Gate gateAt(int sliceIdx, int wireIdx) {
+    //     return slices.at(sliceIdx).at(wireIdx);
+    // }
 
     // Transformation //
 
     StateVector applyTransformationToSlice(StateVector SV, int sliceIdx) {
-        // StateVector SV_t(SV);
-        // for(int i = 0; i < (sliceIdx + 1); i++) {
-        //     StateVector t(SV_t);
-        //     SV_t = matrixVectorMultiply(t, slices.at(i).toMatrix());
-        // }
-        // return SV_t;
-
         StateVector SV_t(SV);    
         for(int i = 0; i < (sliceIdx + 1); i++) {
-            // StateVector t(SV_t);
             SV_t = matrixVectorMultiply(SV_t, slices.at(i).toMatrix());
         }
         return SV_t;
@@ -395,9 +471,9 @@ class Circuit {
 // }
 
 int main(void) {
-    /**/
+    
     // Slices & Tensoring //
-    TimeSlice TS_0({OneQubitGate(I, 0), OneQubitGate(I, 1), OneQubitGate(I, 2)});
+    TimeSlice TS_0({new SingleQubitGate(I, 0), new SingleQubitGate(I, 1), new SingleQubitGate(I, 2)}, 2);
     Matrix TestIII = {{Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
                      {Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
                      {Complex(0, 0), Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
@@ -408,7 +484,7 @@ int main(void) {
                      {Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0)}};
     testMatrixEqual(TS_0.toMatrix(), TestIII, "I ⊗ I ⊗ I");
 
-    TimeSlice TS_1({OneQubitGate(I, 0), OneQubitGate(I, 1), OneQubitGate(X, 2)});
+    TimeSlice TS_1({new SingleQubitGate(I, 0), new SingleQubitGate(I, 1), new SingleQubitGate(X, 2)}, 2);
     Matrix TestIIX = {{Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
                         {Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
                         {Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
@@ -423,21 +499,25 @@ int main(void) {
 
     // Circuits //
 
-    Circuit Circ_1({TimeSlice({OneQubitGate(H, 0), OneQubitGate(I, 1)}),
-                    TimeSlice({OneQubitGate(I, 0), OneQubitGate(H, 1)})}, 2);
-    // Circ_1.print();
+    Circuit Circ_1({TimeSlice({new SingleQubitGate(H, 0), new SingleQubitGate(I, 1)}),
+                    TimeSlice({new SingleQubitGate(I, 0), new SingleQubitGate(H, 1)})}, 2);
 
-    auto SV_0 = Circ_1.applyTransformationToSlice(makeStateVector(2), 1);
-    auto SV_1 = Circ_1.applyTransformations(makeStateVector(2));
-    testStateVectorsEqual(SV_0, SV_1, "((I ⊗ H)((H ⊗ I)|000>))");
-    // auto SV_1 = Circ_1.applyTransformationAtSlice(SV_0, 1);
+    Circuit Circ_2({TimeSlice({new SingleQubitGate(H, 0), new SingleQubitGate(I, 1)}),
+                    TimeSlice({new ControlledGate(X, 0, 1)}, 2)}, 2);
+    // printStateVector(Circ_2.applyTransformations(makeStateVector(2)));
 
-    // cout << typeid(OneQubitGate(I, 0)).name() << "\n";
-    // cout << abs(-10);
-    //
-    // ControlledGate CG(X, 1,2 );
-    // TimeSlice TS_C({CG});
-    // for(auto g : TS_C.gates) {
-    //     g.toMatrix();
-    // };
+    Circuit Circ_3({TimeSlice({new SingleQubitGate(H, 0), new SingleQubitGate(I, 1)}),
+                    TimeSlice({new ControlledGate(X, 0, 1)}, 2),
+                    TimeSlice({new ControlledGate(X, 0, 1)}, 2),
+                    TimeSlice({new SingleQubitGate(H, 0), new SingleQubitGate(I, 1)})},
+                    2);
+    // printStateVector(Circ_3.applyTransformationToSlice(makeStateVector(2),2));
+    // printStateVector(Circ_3.applyTransformations(makeStateVector(2)));
+
+    Circuit Circ_4({TimeSlice({new SingleQubitGate(H, 0), new SingleQubitGate(I, 1), new SingleQubitGate(I, 2)}),
+                TimeSlice({new ControlledGate(X, 0, 1)}, 3),
+                TimeSlice({new ControlledGate(X, 1, 2)}, 3)},
+                3);
+    printStateVector(Circ_4.applyTransformations(makeStateVector(3)));
+
 }
