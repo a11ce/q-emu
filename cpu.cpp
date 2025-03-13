@@ -280,7 +280,7 @@ protected:
   OneQubitGate(size_t w) : wireIdx(w){};
 };
 
-class TwoQubitGate : public Gate {
+class ControlledGate : public Gate {
 public:
   size_t controlWireIdx;
   size_t targetWireIdx;
@@ -292,8 +292,8 @@ public:
   }
 
 protected:
-  TwoQubitGate(){};
-  TwoQubitGate(size_t c, size_t t) : controlWireIdx(c), targetWireIdx(t){};
+  ControlledGate(){};
+  ControlledGate(size_t c, size_t t) : controlWireIdx(c), targetWireIdx(t){};
 };
 
 class H_Gate : public OneQubitGate {
@@ -320,10 +320,10 @@ public:
   };
 };
 
-class CX_Gate : public TwoQubitGate {
+class CX_Gate : public ControlledGate {
 public:
   CX_Gate(){};
-  CX_Gate(size_t c, size_t t) : TwoQubitGate(c, t){};
+  CX_Gate(size_t c, size_t t) : ControlledGate(c, t){};
   virtual string toGateString() const override { return "CX"; };
   virtual Matrix toMatrix() const override {
     return {{{0, 0}, {1, 0}}, //
@@ -332,10 +332,10 @@ public:
 };
 
 // FIXME
-class SWAP_Gate : public TwoQubitGate {
+class SWAP_Gate : public ControlledGate {
 public:
   SWAP_Gate(){};
-  SWAP_Gate(size_t c, size_t t) : TwoQubitGate(c, t){};
+  SWAP_Gate(size_t c, size_t t) : ControlledGate(c, t){};
   virtual string toGateString() const override { return "x"; };
   virtual Matrix toMatrix() const override { return {{{0, 0}}}; };
 };
@@ -371,12 +371,12 @@ private:
     vector<Matrix> M_Vec(nQubits, I);
     // currently testing an implementation allowing for more than one controlled
     // operation per slice
-    vector<TwoQubitGate *> control_queue;
+    vector<ControlledGate *> control_queue;
     for (auto g : this->gates) {
       // if gate is control (not best way to do this but it works for now)
       if (auto *oneQG = dynamic_cast<OneQubitGate *>(g)) {
         M_Vec.at(oneQG->wireIdx) = oneQG->toMatrix();
-      } else if (auto *twoQG = dynamic_cast<TwoQubitGate *>(g)) {
+      } else if (auto *twoQG = dynamic_cast<ControlledGate *>(g)) {
         control_queue.emplace_back(twoQG);
       } else {
         cout << "unknown gate type in toTransformation, somehow?\n";
@@ -386,7 +386,7 @@ private:
     if (!control_queue.empty()) {
       // again, leaving this as a "queue"/vector for the above reasons even
       // though it currently will only pull the first
-      TwoQubitGate *g = control_queue.at(0);
+      ControlledGate *g = control_queue.at(0);
       return collapseControlledMatrixVector(
           M_Vec, g->toMatrix(), g->controlWireIdx, g->targetWireIdx);
     } else {
@@ -405,20 +405,21 @@ public:
 
   StateVector runToPosition(StateVector SV, int sliceIdx) {
     StateVector SV_t(SV);
-    for (int i = 0; i < (sliceIdx + 1); i++) {
+    for (int i = 0; i < sliceIdx; i++) {
       SV_t = matrixVectorMultiply(SV_t, program.at(i).toTransformation());
     }
     return SV_t;
   }
 
   // Computes the final state vector of the circuit
-  StateVector applyTransformations(StateVector _SV) {
-    StateVector SV(_SV);
-    for (TimeSlice TS : program) {
-      StateVector t(SV);
-      SV = matrixVectorMultiply(t, TS.toTransformation());
-    }
-    return SV;
+  StateVector run(StateVector SV) {
+    return runToPosition(SV, program.size());
+    /*    StateVector SV(_SV);
+        for (TimeSlice TS : program) {
+          StateVector t(SV);
+          SV = matrixVectorMultiply(t, TS.toTransformation());
+        }
+        return SV;*/
   }
 
   // Helpers //
@@ -443,7 +444,7 @@ optional<Gate *> tryParseOneQubitGate(char c) {
   }
 }
 
-optional<Gate *> tryParseTwoQubitGate(char c) {
+optional<Gate *> tryParseControlledGate(char c) {
   switch (c) {
   case 'Z':
     return new CX_Gate();
@@ -498,8 +499,8 @@ optional<TimeSlice> parseTimeSlice(vector<char> slice) {
       auto gate = static_cast<OneQubitGate *>(oQG.value());
       gate->wireIdx = idx;
       TS.gates.push_back(gate);
-    } else if (auto tQG = tryParseTwoQubitGate(slice[idx])) {
-      auto gate = static_cast<TwoQubitGate *>(tQG.value());
+    } else if (auto tQG = tryParseControlledGate(slice[idx])) {
+      auto gate = static_cast<ControlledGate *>(tQG.value());
       gate->targetWireIdx = idx;
       gate->controlWireIdx = findControlMark(idx, slice[idx], slice);
       // mild hack so we dont get (x 0 1) and (x 1 0)
@@ -547,7 +548,7 @@ string gateToString(Gate *gate) {
   if (const auto *oneQG = dynamic_cast<OneQubitGate *>(gate)) {
     oss << "(" << oneQG->toGateString() << " " << to_string(oneQG->wireIdx)
         << ")\n";
-  } else if (const auto *twoQG = dynamic_cast<TwoQubitGate *>(gate)) {
+  } else if (const auto *twoQG = dynamic_cast<ControlledGate *>(gate)) {
     oss << "(" << twoQG->toGateString() << " " << twoQG->controlWireIdx << " "
         << twoQG->targetWireIdx << ")\n";
   } else {
@@ -639,7 +640,7 @@ int main(void) {
                  2);
   StateVector Ket11 = {Complex(0, 0), Complex(0, 0), Complex(0, 0),
                        Complex(1, 0)};
-  testStateVectorsEqual(Circ_1.applyTransformations(makeStateVector(2)), Ket11,
+  testStateVectorsEqual(Circ_1.run(makeStateVector(2)), Ket11,
                         "(I ⊗ X((X ⊗ I)|00>))");
 
   TimeSlice Circ_2_TS_0({new X_Gate(1)}, 2);
@@ -649,11 +650,11 @@ int main(void) {
   Circuit Circ_2({Circ_2_TS_0, Circ_2_TS_1, Circ_2_TS_2}, 2);
   StateVector Ket01 = {Complex(0, 0), Complex(1, 0), Complex(0, 0),
                        Complex(0, 0)};
-  testStateVectorsEqual(Circ_2.runToPosition(makeStateVector(2), 0), Ket01,
-                        "(I ⊗ X)|00>))");
   testStateVectorsEqual(Circ_2.runToPosition(makeStateVector(2), 1), Ket01,
+                        "(I ⊗ X)|00>))");
+  testStateVectorsEqual(Circ_2.runToPosition(makeStateVector(2), 2), Ket01,
                         "(CX(0,1))|01>))");
-  testStateVectorsEqual(Circ_2.runToPosition(makeStateVector(2), 2), Ket11,
+  testStateVectorsEqual(Circ_2.runToPosition(makeStateVector(2), 3), Ket11,
                         "(CX(1,0)|01>))");
   return 0;
 }
