@@ -193,6 +193,25 @@ Matrix tensorSeries(vector<Matrix> M_Vec) {
   return U;
 }
 
+Matrix matrixMultiply(Matrix M, Matrix N) {
+  // implied : if M.size() = M.at(0).size() & (same for N) & M.size() ==
+  // N.size()
+  Matrix P = initSquareMatrix(M.size());
+  int numRows = M.size();
+  int numCols = M.size();
+
+  for (int i = 0; i < numRows; i++) {
+    for (int j = 0; j < numCols; j++) {
+      for (int k = 0; k < numCols; k++) {
+        P[i][j].x += M[i][k].x * N[k][j].x;
+        P[i][j].y += M[i][k].y * N[k][j].y;
+      }
+    }
+  }
+
+  return P;
+}
+
 StateVector matrixVectorMultiply(StateVector SV, Matrix M) {
   // init output state vector to all zeros
   StateVector O_SV;
@@ -276,8 +295,8 @@ public:
   }
 
 protected:
-  OneQubitGate(){};
-  OneQubitGate(size_t w) : wireIdx(w){};
+  OneQubitGate() {};
+  OneQubitGate(size_t w) : wireIdx(w) {};
 };
 
 class ControlledGate : public Gate {
@@ -292,14 +311,14 @@ public:
   }
 
 protected:
-  ControlledGate(){};
-  ControlledGate(size_t c, size_t t) : controlWireIdx(c), targetWireIdx(t){};
+  ControlledGate() {};
+  ControlledGate(size_t c, size_t t) : controlWireIdx(c), targetWireIdx(t) {};
 };
 
 class H_Gate : public OneQubitGate {
 public:
-  H_Gate(){};
-  H_Gate(size_t w) : OneQubitGate(w){};
+  H_Gate() {};
+  H_Gate(size_t w) : OneQubitGate(w) {};
 
   virtual string toGateString() const override { return "H"; };
   virtual Matrix toMatrix() const override {
@@ -310,8 +329,8 @@ public:
 
 class X_Gate : public OneQubitGate {
 public:
-  X_Gate(){};
-  X_Gate(size_t w) : OneQubitGate(w){};
+  X_Gate() {};
+  X_Gate(size_t w) : OneQubitGate(w) {};
 
   virtual string toGateString() const override { return "X"; };
   virtual Matrix toMatrix() const override {
@@ -320,10 +339,23 @@ public:
   };
 };
 
+class Z_Gate : public OneQubitGate {
+public:
+  Z_Gate() {};
+  Z_Gate(size_t w) : OneQubitGate(w) {};
+
+  virtual string toGateString() const override { return "Z"; };
+  virtual Matrix toMatrix() const override {
+    return {{{1, 0}, {0, 0}}, {{0, 0}, {-1, 0}}};
+  };
+};
+
+// Single Qubit Gates to add: Y, S (phase), T (transversal)
+
 class CX_Gate : public ControlledGate {
 public:
-  CX_Gate(){};
-  CX_Gate(size_t c, size_t t) : ControlledGate(c, t){};
+  CX_Gate() {};
+  CX_Gate(size_t c, size_t t) : ControlledGate(c, t) {};
   virtual string toGateString() const override { return "CX"; };
   virtual Matrix toMatrix() const override {
     return {{{0, 0}, {1, 0}}, //
@@ -331,11 +363,21 @@ public:
   };
 };
 
+class CZ_Gate : public ControlledGate {
+public:
+  CZ_Gate() {};
+  CZ_Gate(size_t c, size_t t) : ControlledGate(c, t) {};
+  virtual string toGateString() const override { return "CZ"; };
+  virtual Matrix toMatrix() const override {
+    return {{{1, 0}, {0, 0}}, {{0, 0}, {-1, 0}}};
+  };
+};
+
 // FIXME
 class SWAP_Gate : public ControlledGate {
 public:
-  SWAP_Gate(){};
-  SWAP_Gate(size_t c, size_t t) : ControlledGate(c, t){};
+  SWAP_Gate() {};
+  SWAP_Gate(size_t c, size_t t) : ControlledGate(c, t) {};
   virtual string toGateString() const override { return "x"; };
   virtual Matrix toMatrix() const override { return {{{0, 0}}}; };
 };
@@ -348,7 +390,7 @@ public:
 
 class PeekTimeSlice : public TimeSlice {
 public:
-  PeekTimeSlice(){};
+  PeekTimeSlice() {};
   virtual string toString() const override { return "(peek)"; }
 };
 
@@ -361,7 +403,8 @@ class CompiledTimeSlice : public OpTimeSlice {
 public:
   Matrix theMatrix;
 
-  CompiledTimeSlice(Matrix m) : theMatrix(m){};
+  CompiledTimeSlice(Matrix m) : theMatrix(m) {};
+  virtual string toString() const override { return "(compile)"; }
   virtual Matrix toTransformation() const override { return theMatrix; }
 };
 
@@ -371,9 +414,9 @@ public:
   size_t nQubits;
 
   GateTimeSlice(vector<Gate *> _gates, size_t _nQubits)
-      : gates(_gates), nQubits(_nQubits){};
+      : gates(_gates), nQubits(_nQubits) {};
 
-  GateTimeSlice(size_t nQ) : nQubits(nQ){};
+  GateTimeSlice(size_t nQ) : nQubits(nQ) {};
 
   /* currently tinkering with a better/more effic. method for providing the
 unitary here that will wrap the processGates function, hence the arbitrary
@@ -428,8 +471,8 @@ public:
   size_t nQubits;
   vector<TimeSlice *> program;
 
-  Circuit(size_t n) : nQubits(n){};
-  Circuit(vector<TimeSlice *> s, size_t n) : nQubits(n), program(s){};
+  Circuit(size_t n) : nQubits(n) {};
+  Circuit(vector<TimeSlice *> s, size_t n) : nQubits(n), program(s) {};
 
   StateVector runToPosition(StateVector SV, int sliceIdx) {
     StateVector SV_t(SV);
@@ -590,6 +633,18 @@ string gateToString(Gate *gate) {
   }
   return oss.str();
 }
+
+CompiledTimeSlice compileTimeslices(vector<OpTimeSlice *> TS) {
+  // Calculating matrix at timeslice from R to L
+  // CompiledTimeslice C_TS;
+  // vector<Matrix> TS_Vec;
+  Matrix M = TS.at(TS.size() - 1)->toTransformation();
+  for (int i = (TS.size() - 2); i >= 0; i--) {
+    M = matrixMultiply(M, TS.at(i)->toTransformation());
+  }
+  return CompiledTimeSlice(M);
+}
+
 int main(void) {
 
   /*
@@ -693,5 +748,34 @@ int main(void) {
                         "(CX(0,1))|01>))");
   testStateVectorsEqual(Circ_2.runToPosition(makeStateVector(2), 3), Ket11,
                         "(CX(1,0)|01>))");
+
+  // test 2
+  //  auto circuit_2 = parseCircuitDiagram("|0>-Z-.!---X\n"
+  //                                     "|0>-X-Z!-X-Z");
+
+  GateTimeSlice *Circ_3_TS_0 =
+      new GateTimeSlice({new Z_Gate(0), new X_Gate(1)}, 2);
+  GateTimeSlice *Circ_3_TS_1 = new GateTimeSlice({new CZ_Gate(0, 1)}, 2);
+
+  GateTimeSlice *Circ_3_TS_2 = new GateTimeSlice({new X_Gate(1)}, 2);
+  GateTimeSlice *Circ_3_TS_3 =
+      new GateTimeSlice({new X_Gate(0), new Z_Gate(1)}, 2);
+
+  // printMatrix(Circ_3_TS_0->toTransformation());
+  // printMatrix(Circ_3_TS_1->toTransformation());
+
+  Matrix C_TS_0 = matrixMultiply(Circ_3_TS_1->toTransformation(),
+                                 Circ_3_TS_0->toTransformation());
+  Matrix C_TS_1 = matrixMultiply(Circ_3_TS_3->toTransformation(),
+                                 Circ_3_TS_2->toTransformation());
+  Circuit Circ_3_Total({Circ_3_TS_0, Circ_3_TS_1, Circ_3_TS_2, Circ_3_TS_3}, 2);
+
+  // printMatrix(C_TS_0);
+  // printMatrix(C_TS_1);
+  // printMatrix(matrixMultiply(C_TS_1, C_TS_0));
+  testStateVectorsEqual(Circ_3_Total.runToPosition(makeStateVector(2), 1),
+                        matrixVectorMultiply(makeStateVector(2), C_TS_0),
+                        "(CZ(0,1)(Z ⊗ X(|00>)))");
+
   return 0;
 }
