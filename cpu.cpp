@@ -341,14 +341,39 @@ public:
 };
 
 class TimeSlice {
+  //  virtual TimeSlice() = 0;
+public:
+  virtual string toString() const = 0;
+};
+
+class PeekTimeSlice : public TimeSlice {
+public:
+  PeekTimeSlice(){};
+  virtual string toString() const override { return "(peek)"; }
+};
+
+class OpTimeSlice : public TimeSlice {
+public:
+  virtual Matrix toTransformation() const = 0;
+};
+
+class CompiledTimeSlice : public OpTimeSlice {
+public:
+  Matrix theMatrix;
+
+  CompiledTimeSlice(Matrix m) : theMatrix(m){};
+  virtual Matrix toTransformation() const override { return theMatrix; }
+};
+
+class GateTimeSlice : public OpTimeSlice {
 public:
   vector<Gate *> gates;
   size_t nQubits;
 
-  TimeSlice(vector<Gate *> _gates, size_t _nQubits)
+  GateTimeSlice(vector<Gate *> _gates, size_t _nQubits)
       : gates(_gates), nQubits(_nQubits){};
 
-  TimeSlice(size_t nQ) : nQubits(nQ){};
+  GateTimeSlice(size_t nQ) : nQubits(nQ){};
 
   /* currently tinkering with a better/more effic. method for providing the
 unitary here that will wrap the processGates function, hence the arbitrary
@@ -356,9 +381,11 @@ function wrap here. */
 
   // returns the combined unitary for this timeslice
 
-  Matrix toTransformation() { return toTransformationAux(/*gates, nQubits*/); }
+  virtual Matrix toTransformation() const override {
+    return toTransformationAux(/*gates, nQubits*/);
+  }
 
-  string toString() const {
+  virtual string toString() const override {
     ostringstream oss;
     for (auto gate : gates) {
       oss << gate->toString() << " ";
@@ -367,7 +394,8 @@ function wrap here. */
   }
 
 private:
-  Matrix toTransformationAux(/*vector<Gate *> _gates, int num_of_wires*/) {
+  Matrix
+  toTransformationAux(/*vector<Gate *> _gates, int num_of_wires*/) const {
     vector<Matrix> M_Vec(nQubits, I);
     // currently testing an implementation allowing for more than one controlled
     // operation per slice
@@ -398,15 +426,17 @@ private:
 class Circuit {
 public:
   size_t nQubits;
-  vector<TimeSlice> program;
+  vector<TimeSlice *> program;
 
   Circuit(size_t n) : nQubits(n){};
-  Circuit(vector<TimeSlice> s, size_t n) : nQubits(n), program(s){};
+  Circuit(vector<TimeSlice *> s, size_t n) : nQubits(n), program(s){};
 
   StateVector runToPosition(StateVector SV, int sliceIdx) {
     StateVector SV_t(SV);
     for (int i = 0; i < sliceIdx; i++) {
-      SV_t = matrixVectorMultiply(SV_t, program.at(i).toTransformation());
+      if (const auto *op = dynamic_cast<OpTimeSlice *>(program.at(i))) {
+        SV_t = matrixVectorMultiply(SV_t, op->toTransformation());
+      }
     }
     return SV_t;
   }
@@ -427,7 +457,7 @@ public:
     cout << "Circuit with " << nQubits << " cubits and " << program.size()
          << " timesteps:\n";
     for (const auto &ts : program) {
-      cout << ts.toString() << "\n";
+      cout << ts->toString() << "\n";
     }
     return;
   }
@@ -479,7 +509,7 @@ size_t findControlMark(size_t gateIdx, char gateChar, vector<char> slice) {
   exit(1);
 }
 
-optional<TimeSlice> parseTimeSlice(vector<char> slice) {
+optional<TimeSlice *> parseTimeSlice(vector<char> slice) {
   char same = slice[0];
   for (auto c : slice) {
     if (c != same) {
@@ -492,20 +522,24 @@ optional<TimeSlice> parseTimeSlice(vector<char> slice) {
     return {};
   }
 
-  TimeSlice TS(slice.size());
+  if (same == '!') {
+    return new PeekTimeSlice();
+  }
+
+  GateTimeSlice *TS = new GateTimeSlice(slice.size());
 
   for (size_t idx = 0; idx < slice.size(); idx++) {
     if (auto oQG = tryParseOneQubitGate(slice[idx])) {
       auto gate = static_cast<OneQubitGate *>(oQG.value());
       gate->wireIdx = idx;
-      TS.gates.push_back(gate);
+      TS->gates.push_back(gate);
     } else if (auto tQG = tryParseControlledGate(slice[idx])) {
       auto gate = static_cast<ControlledGate *>(tQG.value());
       gate->targetWireIdx = idx;
       gate->controlWireIdx = findControlMark(idx, slice[idx], slice);
       // mild hack so we dont get (x 0 1) and (x 1 0)
       if (!(slice[idx] == 'x' && gate->targetWireIdx < gate->controlWireIdx)) {
-        TS.gates.push_back(gate);
+        TS->gates.push_back(gate);
       }
     } else if (!isNonGateCircuitChar(slice[idx])) {
       cout << "bad char in diagram: " << slice[idx] << "\n";
@@ -556,24 +590,26 @@ string gateToString(Gate *gate) {
   }
   return oss.str();
 }
-
-string timeSliceToString(const TimeSlice &ts) {
-  std::ostringstream oss;
-  for (auto gate : ts.gates) {
-    oss << gateToString(gate);
-  }
-  return oss.str();
-}
 int main(void) {
 
+  /*
+  - parse swap into 3 cnots
+  - Xparse bangs into peek timeslice
+  - compile slices
+    -  split compilation at peek times
+
+
+  */
+
   // parse test
-  auto circuit = parseCircuitDiagram("|0>-H-.---x\n"
-                                     "|0>-H-Z-H-x");
+  auto circuit = parseCircuitDiagram("|0>-H-.!---x\n"
+                                     "|0>-H-Z!-H-x");
+
   circuit.print();
 
   // Slices & Tensoring //
 
-  TimeSlice TS_0({}, 3);
+  GateTimeSlice TS_0({}, 3);
   Matrix TestIII = {
       {Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0),
        Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
@@ -593,7 +629,7 @@ int main(void) {
        Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(1, 0)}};
   testMatrixEqual(TS_0.toTransformation(), TestIII, "I ⊗ I ⊗ I");
 
-  TimeSlice TS_1({new X_Gate(2)}, 3);
+  GateTimeSlice TS_1({new X_Gate(2)}, 3);
   Matrix TestIIX = {
       {Complex(0, 0), Complex(1, 0), Complex(0, 0), Complex(0, 0),
        Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
@@ -614,7 +650,7 @@ int main(void) {
 
   testMatrixEqual(TS_1.toTransformation(), TestIIX, "I ⊗ I ⊗ X");
 
-  TimeSlice TS_2({new X_Gate(0), new CX_Gate(2, 1)}, 3);
+  GateTimeSlice TS_2({new X_Gate(0), new CX_Gate(2, 1)}, 3);
   Matrix TestXICX = {
       {Complex(0, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0),
        Complex(1, 0), Complex(0, 0), Complex(0, 0), Complex(0, 0)},
@@ -635,19 +671,20 @@ int main(void) {
   testMatrixEqual(TS_2.toTransformation(), TestXICX, "X ⊗ CX(2, 1)");
 
   // Baby Circuits //
-  Circuit Circ_1({TimeSlice({new X_Gate(0)}, 2),  //
-                  TimeSlice({new X_Gate(1)}, 2)}, //
+  Circuit Circ_1({new GateTimeSlice({new X_Gate(0)}, 2),  //
+                  new GateTimeSlice({new X_Gate(1)}, 2)}, //
                  2);
   StateVector Ket11 = {Complex(0, 0), Complex(0, 0), Complex(0, 0),
                        Complex(1, 0)};
   testStateVectorsEqual(Circ_1.run(makeStateVector(2)), Ket11,
                         "(I ⊗ X((X ⊗ I)|00>))");
 
-  TimeSlice Circ_2_TS_0({new X_Gate(1)}, 2);
-  TimeSlice Circ_2_TS_1({new CX_Gate(0, 1)}, 2);
-  TimeSlice Circ_2_TS_2({new CX_Gate(1, 0)}, 2);
+  GateTimeSlice *Circ_2_TS_0 = new GateTimeSlice({new X_Gate(1)}, 2);
+  GateTimeSlice *Circ_2_TS_1 = new GateTimeSlice({new CX_Gate(0, 1)}, 2);
+  GateTimeSlice *Circ_2_TS_2 = new GateTimeSlice({new CX_Gate(1, 0)}, 2);
 
   Circuit Circ_2({Circ_2_TS_0, Circ_2_TS_1, Circ_2_TS_2}, 2);
+
   StateVector Ket01 = {Complex(0, 0), Complex(1, 0), Complex(0, 0),
                        Complex(0, 0)};
   testStateVectorsEqual(Circ_2.runToPosition(makeStateVector(2), 1), Ket01,
