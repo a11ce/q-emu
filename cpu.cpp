@@ -306,7 +306,7 @@ public:
   virtual string toString() const override {
     ostringstream oss;
     oss << "(" << toGateString() << " " << controlWireIdx << " "
-        << targetWireIdx << ")\n";
+        << targetWireIdx << ")";
     return oss.str();
   }
 
@@ -322,8 +322,8 @@ public:
 
   virtual string toGateString() const override { return "H"; };
   virtual Matrix toMatrix() const override {
-    return {{{1, 0}, {1, 0}}, //
-            {{1, 0}, {-1, 0}}};
+    return {{Complex(INV_SQRT_2, 0), Complex(INV_SQRT_2, 0)},
+            {Complex(INV_SQRT_2, 0), Complex(-1 * INV_SQRT_2, 0)}};
   };
 };
 
@@ -371,15 +371,6 @@ public:
   virtual Matrix toMatrix() const override {
     return {{{1, 0}, {0, 0}}, {{0, 0}, {-1, 0}}};
   };
-};
-
-// FIXME
-class SWAP_Gate : public ControlledGate {
-public:
-  SWAP_Gate() {};
-  SWAP_Gate(size_t c, size_t t) : ControlledGate(c, t) {};
-  virtual string toGateString() const override { return "x"; };
-  virtual Matrix toMatrix() const override { return {{{0, 0}}}; };
 };
 
 class TimeSlice {
@@ -512,6 +503,8 @@ optional<Gate *> tryParseOneQubitGate(char c) {
   switch (c) {
   case 'H':
     return new H_Gate();
+  case 'X':
+    return new X_Gate();
   default:
     return {};
   }
@@ -519,10 +512,9 @@ optional<Gate *> tryParseOneQubitGate(char c) {
 
 optional<Gate *> tryParseControlledGate(char c) {
   switch (c) {
+  // TODO this is wrong because uncontrolled z exists
   case 'Z':
     return new CX_Gate();
-  case 'x':
-    return new SWAP_Gate();
   default:
     return {};
   }
@@ -552,20 +544,25 @@ size_t findControlMark(size_t gateIdx, char gateChar, vector<char> slice) {
   exit(1);
 }
 
-optional<TimeSlice *> parseTimeSlice(vector<char> slice) {
+char trySingleCharOfDiagramSlice(vector<char> slice) {
   char same = slice[0];
   for (auto c : slice) {
     if (c != same) {
-      same = -1;
-      break;
+      return '\0';
     }
   }
+  return same;
+}
 
-  if (same == '|' || same == '0' || same == '>' || same == '-') {
-    return {};
-  }
+bool isNonSemanticDiagramSlice(vector<char> slice) {
+  char same = trySingleCharOfDiagramSlice(slice);
+  return (same == '|' || same == '0' || same == '>' || same == '-');
+}
 
-  if (same == '!') {
+// a simple diagram slice parses to a single time slice
+optional<TimeSlice *> tryParseSimpleDiagramSlice(vector<char> slice) {
+
+  if (trySingleCharOfDiagramSlice(slice) == '!') {
     return new PeekTimeSlice();
   }
 
@@ -580,16 +577,63 @@ optional<TimeSlice *> parseTimeSlice(vector<char> slice) {
       auto gate = static_cast<ControlledGate *>(tQG.value());
       gate->targetWireIdx = idx;
       gate->controlWireIdx = findControlMark(idx, slice[idx], slice);
-      // mild hack so we dont get (x 0 1) and (x 1 0)
-      if (!(slice[idx] == 'x' && gate->targetWireIdx < gate->controlWireIdx)) {
-        TS->gates.push_back(gate);
-      }
-    } else if (!isNonGateCircuitChar(slice[idx])) {
-      cout << "bad char in diagram: " << slice[idx] << "\n";
-      exit(1);
+      TS->gates.push_back(gate);
     }
   }
+
+  if (TS->gates.empty()) {
+    return {};
+  }
   return TS;
+}
+
+optional<vector<TimeSlice *>> tryParseSwapGate(vector<char> slice) {
+
+  vector<size_t> swapQubits;
+  bool seenOtherGate;
+  for (size_t idx = 0; idx < slice.size(); idx++) {
+    if (slice[idx] == 'x') {
+      swapQubits.push_back(idx);
+    } else if (slice[idx] != '-') {
+      seenOtherGate = true;
+    }
+  }
+  if (swapQubits.empty()) {
+    return {};
+  }
+  if (seenOtherGate) {
+    cout << "swap gate with something else in same slice: ";
+    printVec(slice);
+    cout << "\n";
+    exit(1);
+  }
+  if (swapQubits.size() != 2) {
+    cout << "too many swap gate markers: ";
+    printVec(slice);
+    cout << "\n";
+    exit(1);
+  }
+
+  size_t A = swapQubits[0];
+  size_t B = swapQubits[1];
+
+  return {{
+      new GateTimeSlice({new CX_Gate(A, B)}, slice.size()),
+      new GateTimeSlice({new CX_Gate(B, A)}, slice.size()),
+      new GateTimeSlice({new CX_Gate(A, B)}, slice.size()),
+  }};
+}
+
+// a complex diagram slice compiles to multiple time slices
+optional<vector<TimeSlice *>> tryParseComplexDiagramSlice(vector<char> slice) {
+  // special casing is probably fine? use this when we have more complex gates
+  /*
+  if (auto swap = tryParseSwapGate(slice)) {
+    return swap.value();
+  }
+  return {};
+  */
+  return tryParseSwapGate(slice);
 }
 
 Circuit parseCircuitDiagram(string D) {
@@ -610,9 +654,19 @@ Circuit parseCircuitDiagram(string D) {
   Circuit circuit(wireStrs.size());
 
   for (auto slice : slices) {
-    auto ts = parseTimeSlice(slice);
-    if (ts) {
+    if (isNonSemanticDiagramSlice(slice)) {
+      ;
+    } else if (auto cts = tryParseComplexDiagramSlice(slice)) {
+      for (auto ts : cts.value()) {
+        circuit.program.push_back(ts);
+      }
+    } else if (auto ts = tryParseSimpleDiagramSlice(slice)) {
       circuit.program.push_back(ts.value());
+    } else {
+      cout << "bad diagram slice: ";
+      printVec(slice);
+      cout << "\n";
+      exit(1);
     }
   }
 
@@ -648,7 +702,7 @@ CompiledTimeSlice compileTimeslices(vector<OpTimeSlice *> TS) {
 int main(void) {
 
   /*
-  - parse swap into 3 cnots
+  - Xparse swap into 3 cnots
   - Xparse bangs into peek timeslice
   - compile slices
     -  split compilation at peek times
@@ -658,10 +712,22 @@ int main(void) {
 
   // parse test
   auto circuit = parseCircuitDiagram("|0>-H-.!---x\n"
-                                     "|0>-H-Z!-H-x");
+                                     "|0>-H-Z!-H-x\n");
 
   circuit.print();
+  printStateVector(circuit.run(makeStateVector(2)));
 
+  auto c2 = parseCircuitDiagram("|0>-H\n"
+                                "|0>--");
+  c2.print();
+  printStateVector(c2.run(makeStateVector(2)));
+
+  auto c3 = parseCircuitDiagram("|0>-H-x\n"
+                                "|0>---x");
+  c3.print();
+  printStateVector(c3.run(makeStateVector(2)));
+
+  return 0;
   // Slices & Tensoring //
 
   GateTimeSlice TS_0({}, 3);
