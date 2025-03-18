@@ -84,9 +84,9 @@ StateVector makeStateVector(size_t nQubits) {
   return SV;
 }
 
-StateVector makeTargetStateVector(string state){
+StateVector makeTargetStateVector(string state) {
   StateVector SV;
-  for(int i = 0; i < state.size(); i++) {
+  for (int i = 0; i < state.size(); i++) {
     SV.push_back(Complex(state[i] - '0', 0));
   }
   return SV;
@@ -298,10 +298,12 @@ vector<vector<int>> cartesian_product_01(int n) {
   return carts;
 }
 
-Matrix collapseMCMT(vector<Matrix> M_Vec, Matrix U, vector<int> control, vector<int> target) {
-  //here to handle if the ctrl and targs are just 1
+Matrix collapseMCMT(vector<Matrix> M_Vec, Matrix U, vector<int> control,
+                    vector<int> target) {
+  // here to handle if the ctrl and targs are just 1
   // if (control.size() == 1 && target.size() == 1) {
-  //   return collapseControlledMatrixVector(M_Vec, U, control.at(0), target.at(0));
+  //   return collapseControlledMatrixVector(M_Vec, U, control.at(0),
+  //   target.at(0));
   // }
 
   vector<vector<int>> carts = cartesian_product_01(control.size());
@@ -310,17 +312,17 @@ Matrix collapseMCMT(vector<Matrix> M_Vec, Matrix U, vector<int> control, vector<
   vector<vector<Matrix>> tensors(carts.size(), M_Vec);
 
   for (int t = 0; t < tensors.size(); t++) {
-    //preset all targets to the unitary
-    for(int tar : target) {
+    // preset all targets to the unitary
+    for (int tar : target) {
       tensors.at(t).at(tar) = U;
     }
-    //handle setting controls
+    // handle setting controls
     for (int i = 0; i < control.size(); i++) {
       int ctrl_num = control.at(i);
       // tensors.at(t).at(ctrl_num) = ;
-      if(carts.at(t).at(i) == 0) {
+      if (carts.at(t).at(i) == 0) {
         tensors.at(t).at(ctrl_num) = Proj_0;
-        for(int tar : target) {
+        for (int tar : target) {
           tensors.at(t).at(tar) = I;
         }
       } else {
@@ -328,9 +330,10 @@ Matrix collapseMCMT(vector<Matrix> M_Vec, Matrix U, vector<int> control, vector<
       }
     }
   }
-  //collapse tensors to single tensor
-  Matrix tot(pow(2, M_Vec.size()), vector<Complex>(pow(2, M_Vec.size()), {0,0}));
-  for(auto sub_Vec : tensors) {
+  // collapse tensors to single tensor
+  Matrix tot(pow(2, M_Vec.size()),
+             vector<Complex>(pow(2, M_Vec.size()), {0, 0}));
+  for (auto sub_Vec : tensors) {
     auto t = tensorSeries(sub_Vec);
     tot = matrixAddition(tot, t);
   }
@@ -355,8 +358,8 @@ public:
   }
 
 protected:
-  OneQubitGate() {};
-  OneQubitGate(size_t w) : wireIdx(w) {};
+  OneQubitGate(){};
+  OneQubitGate(size_t w) : wireIdx(w){};
 };
 
 class ControlledGate : public Gate {
@@ -371,14 +374,14 @@ public:
   }
 
 protected:
-  ControlledGate() {};
-  ControlledGate(size_t c, size_t t) : controlWireIdx(c), targetWireIdx(t) {};
+  ControlledGate(){};
+  ControlledGate(size_t c, size_t t) : controlWireIdx(c), targetWireIdx(t){};
 };
 
 class H_Gate : public OneQubitGate {
 public:
-  H_Gate() {};
-  H_Gate(size_t w) : OneQubitGate(w) {};
+  H_Gate(){};
+  H_Gate(size_t w) : OneQubitGate(w){};
 
   virtual string toGateString() const override { return "H"; };
   virtual Matrix toMatrix() const override {
@@ -389,8 +392,8 @@ public:
 
 class X_Gate : public OneQubitGate {
 public:
-  X_Gate() {};
-  X_Gate(size_t w) : OneQubitGate(w) {};
+  X_Gate(){};
+  X_Gate(size_t w) : OneQubitGate(w){};
 
   virtual string toGateString() const override { return "X"; };
   virtual Matrix toMatrix() const override {
@@ -401,8 +404,8 @@ public:
 
 class Z_Gate : public OneQubitGate {
 public:
-  Z_Gate() {};
-  Z_Gate(size_t w) : OneQubitGate(w) {};
+  Z_Gate(){};
+  Z_Gate(size_t w) : OneQubitGate(w){};
 
   virtual string toGateString() const override { return "Z"; };
   virtual Matrix toMatrix() const override {
@@ -414,8 +417,8 @@ public:
 
 class CX_Gate : public ControlledGate {
 public:
-  CX_Gate() {};
-  CX_Gate(size_t c, size_t t) : ControlledGate(c, t) {};
+  CX_Gate(){};
+  CX_Gate(size_t c, size_t t) : ControlledGate(c, t){};
   virtual string toGateString() const override { return "CX"; };
   virtual Matrix toMatrix() const override {
     return {{{0, 0}, {1, 0}}, //
@@ -425,8 +428,8 @@ public:
 
 class CZ_Gate : public ControlledGate {
 public:
-  CZ_Gate() {};
-  CZ_Gate(size_t c, size_t t) : ControlledGate(c, t) {};
+  CZ_Gate(){};
+  CZ_Gate(size_t c, size_t t) : ControlledGate(c, t){};
   virtual string toGateString() const override { return "CZ"; };
   virtual Matrix toMatrix() const override {
     return {{{1, 0}, {0, 0}}, {{0, 0}, {-1, 0}}};
@@ -441,7 +444,7 @@ public:
 
 class PeekTimeSlice : public TimeSlice {
 public:
-  PeekTimeSlice() {};
+  PeekTimeSlice(){};
   virtual string toString() const override { return "(peek)"; }
 };
 
@@ -454,7 +457,7 @@ class CompiledTimeSlice : public OpTimeSlice {
 public:
   Matrix theMatrix;
 
-  CompiledTimeSlice(Matrix m) : theMatrix(m) {};
+  CompiledTimeSlice(Matrix m) : theMatrix(m){};
   virtual string toString() const override { return "(compile)"; }
   virtual Matrix toTransformation() const override { return theMatrix; }
 };
@@ -465,13 +468,11 @@ public:
   size_t nQubits;
 
   GateTimeSlice(vector<Gate *> _gates, size_t _nQubits)
-      : gates(_gates), nQubits(_nQubits) {};
+      : gates(_gates), nQubits(_nQubits){};
 
-  GateTimeSlice(size_t nQ) : nQubits(nQ) {};
+  GateTimeSlice(size_t nQ) : nQubits(nQ){};
 
-  void addGate(Gate* g) {
-    gates.emplace_back(g);
-  }
+  void addGate(Gate *g) { gates.push_back(g); }
 
   /* currently tinkering with a better/more effic. method for providing the
 unitary here that will wrap the processGates function, hence the arbitrary
@@ -503,7 +504,7 @@ private:
       if (auto *oneQG = dynamic_cast<OneQubitGate *>(g)) {
         M_Vec.at(oneQG->wireIdx) = oneQG->toMatrix();
       } else if (auto *twoQG = dynamic_cast<ControlledGate *>(g)) {
-        control_queue.emplace_back(twoQG);
+        control_queue.push_back(twoQG);
       } else {
         cout << "unknown gate type in toTransformation, somehow?\n";
         exit(1);
@@ -526,12 +527,10 @@ public:
   size_t nQubits;
   vector<TimeSlice *> program;
 
-  Circuit(size_t n) : nQubits(n) {};
-  Circuit(vector<TimeSlice *> s, size_t n) : nQubits(n), program(s) {};
+  Circuit(size_t n) : nQubits(n){};
+  Circuit(vector<TimeSlice *> s, size_t n) : nQubits(n), program(s){};
 
-  void addTimeslice(TimeSlice* TS) {
-    program.emplace_back(TS);
-  }
+  void addTimeSlice(TimeSlice *TS) { program.push_back(TS); }
 
   StateVector runToPosition(StateVector SV, int sliceIdx) {
     StateVector SV_t(SV);
@@ -767,7 +766,7 @@ CompiledTimeSlice compileTimeslices(vector<OpTimeSlice *> TS) {
   return CompiledTimeSlice(M);
 }
 
-//Grovers function
+// Grovers function
 // void GroversAlgo(int nQubits, string SV_String){
 //   //setup state vector and operator circuit
 //   StateVector SV = makeTargetStateVector(SV_String);
@@ -927,7 +926,6 @@ int main(void) {
                         matrixVectorMultiply(makeStateVector(2), C_TS_0),
                         "(CZ(0,1)(Z ⊗ X(|00>)))");
 
-
   vector<Matrix> M_Vec = {I, I, I};
   vector<int> control = {0};
   vector<int> target = {1};
@@ -940,11 +938,11 @@ int main(void) {
   //   }
   //   cout << "\n --------- \n";
   // }
-  
-  ///Grovers
-  auto SV = makeTargetStateVector("100");
-  testStateVectorsEqual(SV, {Complex(1, 0), Complex(0, 0), Complex(0, 0)}, "Test Target State Vector", 1);
 
+  /// Grovers
+  auto SV = makeTargetStateVector("100");
+  testStateVectorsEqual(SV, {Complex(1, 0), Complex(0, 0), Complex(0, 0)},
+                        "Test Target State Vector", 1);
 
   return 0;
 }
