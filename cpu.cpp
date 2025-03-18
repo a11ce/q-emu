@@ -84,6 +84,14 @@ StateVector makeStateVector(size_t nQubits) {
   return SV;
 }
 
+StateVector makeTargetStateVector(string state){
+  StateVector SV;
+  for(int i = 0; i < state.size(); i++) {
+    SV.push_back(Complex(state[i] - '0', 0));
+  }
+  return SV;
+}
+
 // Test Functions
 int testMatrixEqual(Matrix M, Matrix M_expected, string test_name = "",
                     int print_out = 0) {
@@ -277,6 +285,58 @@ Matrix collapseControlledMatrixVector(vector<Matrix> M_Vec, Matrix U,
   return matrixAddition(tensorSeries(TS_Ctrl), tensorSeries(TS_Targ));
 }
 
+vector<vector<int>> cartesian_product_01(int n) {
+  int num_combinations = pow(2, n);
+  vector<vector<int>> carts(num_combinations, vector<int>(n));
+  for (int i = 0; i < num_combinations; ++i) {
+    for (int j = n - 1; j >= 0; --j) {
+      carts.at(i).at(j) = ((i >> j) & 1);
+      cout << ((i >> j) & 1) << " ";
+    }
+    cout << endl;
+  }
+  return carts;
+}
+
+Matrix collapseMCMT(vector<Matrix> M_Vec, Matrix U, vector<int> control, vector<int> target) {
+  //here to handle if the ctrl and targs are just 1
+  // if (control.size() == 1 && target.size() == 1) {
+  //   return collapseControlledMatrixVector(M_Vec, U, control.at(0), target.at(0));
+  // }
+
+  vector<vector<int>> carts = cartesian_product_01(control.size());
+
+  //# of tensor vectors is 2^(# of controls)
+  vector<vector<Matrix>> tensors(carts.size(), M_Vec);
+
+  for (int t = 0; t < tensors.size(); t++) {
+    //preset all targets to the unitary
+    for(int tar : target) {
+      tensors.at(t).at(tar) = U;
+    }
+    //handle setting controls
+    for (int i = 0; i < control.size(); i++) {
+      int ctrl_num = control.at(i);
+      // tensors.at(t).at(ctrl_num) = ;
+      if(carts.at(t).at(i) == 0) {
+        tensors.at(t).at(ctrl_num) = Proj_0;
+        for(int tar : target) {
+          tensors.at(t).at(tar) = I;
+        }
+      } else {
+        tensors.at(t).at(control.at(i)) = Proj_1;
+      }
+    }
+  }
+  //collapse tensors to single tensor
+  Matrix tot(pow(2, M_Vec.size()), vector<Complex>(pow(2, M_Vec.size()), {0,0}));
+  for(auto sub_Vec : tensors) {
+    auto t = tensorSeries(sub_Vec);
+    tot = matrixAddition(tot, t);
+  }
+  return tot;
+}
+
 class Gate {
 public:
   virtual Matrix toMatrix() const = 0;
@@ -409,6 +469,10 @@ public:
 
   GateTimeSlice(size_t nQ) : nQubits(nQ) {};
 
+  void addGate(Gate* g) {
+    gates.emplace_back(g);
+  }
+
   /* currently tinkering with a better/more effic. method for providing the
 unitary here that will wrap the processGates function, hence the arbitrary
 function wrap here. */
@@ -464,6 +528,10 @@ public:
 
   Circuit(size_t n) : nQubits(n) {};
   Circuit(vector<TimeSlice *> s, size_t n) : nQubits(n), program(s) {};
+
+  void addTimeslice(TimeSlice* TS) {
+    program.emplace_back(TS);
+  }
 
   StateVector runToPosition(StateVector SV, int sliceIdx) {
     StateVector SV_t(SV);
@@ -699,6 +767,22 @@ CompiledTimeSlice compileTimeslices(vector<OpTimeSlice *> TS) {
   return CompiledTimeSlice(M);
 }
 
+//Grovers function
+// void GroversAlgo(int nQubits, string SV_String){
+//   //setup state vector and operator circuit
+//   StateVector SV = makeTargetStateVector(SV_String);
+//   Circuit Grov_Oper(nQubits);
+
+//   //oracle for SV configuration
+//     //set MCMT Z operation on |1> qubits in SV
+//   GateTimeSlice()
+//   for(auto c : SV){
+
+//   }
+
+//   //diffusion operator
+// }
+
 int main(void) {
 
   /*
@@ -842,6 +926,25 @@ int main(void) {
   testStateVectorsEqual(Circ_3_Total.runToPosition(makeStateVector(2), 1),
                         matrixVectorMultiply(makeStateVector(2), C_TS_0),
                         "(CZ(0,1)(Z ⊗ X(|00>)))");
+
+
+  vector<Matrix> M_Vec = {I, I, I};
+  vector<int> control = {0};
+  vector<int> target = {1};
+
+  auto tensors = collapseMCMT(M_Vec, Z, control, target);
+  printMatrix(tensors);
+  // for (auto s : tensors) {
+  //   for (auto m : s) {
+  //     printMatrix(m);
+  //   }
+  //   cout << "\n --------- \n";
+  // }
+  
+  ///Grovers
+  auto SV = makeTargetStateVector("100");
+  testStateVectorsEqual(SV, {Complex(1, 0), Complex(0, 0), Complex(0, 0)}, "Test Target State Vector", 1);
+
 
   return 0;
 }
