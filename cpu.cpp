@@ -298,13 +298,13 @@ vector<vector<int>> cartesian_product_01(int n) {
   return carts;
 }
 
-Matrix collapseMCMT(vector<Matrix> M_Vec, Matrix U, vector<int> control,
-                    vector<int> target) {
+Matrix collapseMCMT(vector<Matrix> M_Vec, Matrix U, vector<size_t> control,
+                    vector<size_t> target) {
   // here to handle if the ctrl and targs are just 1
-  // if (control.size() == 1 && target.size() == 1) {
-  //   return collapseControlledMatrixVector(M_Vec, U, control.at(0),
-  //   target.at(0));
-  // }
+  if (control.size() == 1 && target.size() == 1) {
+    return collapseControlledMatrixVector(M_Vec, U, control.at(0),
+    target.at(0));
+  }
 
   vector<vector<int>> carts = cartesian_product_01(control.size());
 
@@ -364,18 +364,23 @@ protected:
 
 class ControlledGate : public Gate {
 public:
-  size_t controlWireIdx;
-  size_t targetWireIdx;
+  vector<size_t> controlWireIdx;
+  vector<size_t> targetWireIdx;
+  //TODO fix the to string to handle multiple
   virtual string toString() const override {
     ostringstream oss;
-    oss << "(" << toGateString() << " " << controlWireIdx << " "
-        << targetWireIdx << ")";
+    oss << "(" << toGateString() << " " << controlWireIdx.at(0) << " "
+        << targetWireIdx.at(0) << ")";
     return oss.str();
   }
 
 protected:
   ControlledGate(){};
-  ControlledGate(size_t c, size_t t) : controlWireIdx(c), targetWireIdx(t){};
+  ControlledGate(size_t c, size_t t) {
+    controlWireIdx = vector<size_t>(c);
+    targetWireIdx = vector<size_t>(t);
+  };
+  ControlledGate(vector<size_t> c, vector<size_t> t) : controlWireIdx(c), targetWireIdx(t){};
 };
 
 class H_Gate : public OneQubitGate {
@@ -531,8 +536,8 @@ private:
       // again, leaving this as a "queue"/vector for the above reasons even
       // though it currently will only pull the first
       ControlledGate *g = control_queue.at(0);
-      return collapseControlledMatrixVector(
-          M_Vec, g->toMatrix(), g->controlWireIdx, g->targetWireIdx);
+      return collapseMCMT(
+            M_Vec, g->toMatrix(), g->controlWireIdx, g->targetWireIdx);
     } else {
       return tensorSeries(M_Vec);
     }
@@ -562,12 +567,6 @@ public:
   // Computes the final state vector of the circuit
   StateVector run(StateVector SV) {
     return runToPosition(SV, program.size());
-    /*    StateVector SV(_SV);
-        for (TimeSlice TS : program) {
-          StateVector t(SV);
-          SV = matrixVectorMultiply(t, TS.toTransformation());
-        }
-        return SV;*/
   }
 
   void compile() {
@@ -675,8 +674,8 @@ optional<TimeSlice *> tryParseSimpleDiagramSlice(vector<char> slice) {
       TS->gates.push_back(gate);
     } else if (auto tQG = tryParseControlledGate(slice[idx])) {
       auto gate = static_cast<ControlledGate *>(tQG.value());
-      gate->targetWireIdx = idx;
-      gate->controlWireIdx = findControlMark(idx, slice[idx], slice);
+      gate->targetWireIdx = {idx};
+      gate->controlWireIdx = {findControlMark(idx, slice[idx], slice)};
       TS->gates.push_back(gate);
     }
   }
@@ -716,7 +715,11 @@ optional<vector<TimeSlice *>> tryParseSwapGate(vector<char> slice) {
 
   size_t A = swapQubits[0];
   size_t B = swapQubits[1];
-
+  auto G = new CX_Gate(A, B);
+  cout << "Swap Qubits A: " << A << "\n";
+  cout << "Swap Qubits B: " << B << "\n";
+  cout << "Swap Gate Control Wires Size: " << G->controlWireIdx.size() <<"\n";
+  cout << "Swap Gate Target Wires Size: " << G->targetWireIdx.size() << "\n";
   return {{
       new GateTimeSlice({new CX_Gate(A, B)}, slice.size()),
       new GateTimeSlice({new CX_Gate(B, A)}, slice.size()),
@@ -769,7 +772,7 @@ Circuit parseCircuitDiagram(string D) {
       exit(1);
     }
   }
-
+  // cout << "end of parse";
   return circuit;
 }
 
@@ -780,26 +783,30 @@ string gateToString(Gate *gate) {
     oss << "(" << oneQG->toGateString() << " " << to_string(oneQG->wireIdx)
         << ")\n";
   } else if (const auto *twoQG = dynamic_cast<ControlledGate *>(gate)) {
-    oss << "(" << twoQG->toGateString() << " " << twoQG->controlWireIdx << " "
-        << twoQG->targetWireIdx << ")\n";
+    //TODO - fix this to account for MCMT gates
+    oss << "(" << twoQG->toGateString() << " " << twoQG->controlWireIdx.at(0) << " "
+        << twoQG->targetWireIdx.at(0) << ")\n";
+        cout << "never gets to this point here \n";
   } else {
     oss << "(unknown)\n";
   }
   return oss.str();
 }
 
-// Grovers function
-// void GroversAlgo(int nQubits, string SV_String){
-//   //setup state vector and operator circuit
-//   StateVector SV = makeTargetStateVector(SV_String);
-//   Circuit Grov_Oper(nQubits);
+int main(void) {
+  // auto circuit = parseCircuitDiagram("|0>--.\n"
+  //                                    "|0>--X\n");
+  auto circuit = parseCircuitDiagram("|0>-H-.!---x\n"
+                                     "|0>-H-Z!-H-x\n");
 
-//   //oracle for SV configuration
-//     //set MCMT Z operation on |1> qubits in SV
-//   GateTimeSlice()
-//   for(auto c : SV){
+  circuit.print();
+  cout << "adter print \n";
+  printStateVector(circuit.run(makeStateVector(2)));
 
-//   }
+  circuit.compile();
 
-//   //diffusion operator
-// }
+  circuit.print();
+
+  printStateVector(circuit.run(makeStateVector(2)));
+  return 0;
+}
