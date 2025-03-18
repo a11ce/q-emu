@@ -150,8 +150,8 @@ int main(void) {
                         "(CZ(0,1)(Z ⊗ X(|00>)))");
 
   vector<Matrix> M_Vec = {I, I, I};
-  vector<int> control = {0};
-  vector<int> target = {1};
+  vector<size_t> control = {0};
+  vector<size_t> target = {1};
 
   auto tensors = collapseMCMT(M_Vec, Z, control, target);
   printMatrix(tensors);
