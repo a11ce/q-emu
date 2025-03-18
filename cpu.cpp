@@ -456,9 +456,26 @@ public:
 class CompiledTimeSlice : public OpTimeSlice {
 public:
   Matrix theMatrix;
+  //  CompiledTimeSlice(Matrix m) : theMatrix(m){};
+  CompiledTimeSlice(vector<OpTimeSlice *> TS) {
+    // Calculating matrix at timeslice from R to L
+    // CompiledTimeslice C_TS;
+    // vector<Matrix> TS_Vec;
+    components = TS.size();
 
-  CompiledTimeSlice(Matrix m) : theMatrix(m){};
-  virtual string toString() const override { return "(compile)"; }
+    Matrix M = TS.at(TS.size() - 1)->toTransformation();
+    for (int i = (TS.size() - 2); i >= 0; i--) {
+      M = matrixMultiply(M, TS.at(i)->toTransformation());
+    }
+    theMatrix = M;
+  }
+
+private:
+  size_t components;
+
+  virtual string toString() const override {
+    return "(compiled[" + to_string(components) + "])";
+  }
   virtual Matrix toTransformation() const override { return theMatrix; }
 };
 
@@ -551,6 +568,22 @@ public:
           SV = matrixVectorMultiply(t, TS.toTransformation());
         }
         return SV;*/
+  }
+
+  void compile() {
+    vector<TimeSlice *> newProgram;
+    vector<OpTimeSlice *> acc;
+    for (auto slice : program) {
+      if (auto *op = dynamic_cast<OpTimeSlice *>(slice)) {
+        acc.push_back(op);
+      } else {
+        newProgram.push_back(new CompiledTimeSlice(acc));
+        acc = {};
+        newProgram.push_back(slice);
+      }
+    }
+    newProgram.push_back(new CompiledTimeSlice(acc));
+    program = newProgram;
   }
 
   // Helpers //
@@ -755,17 +788,6 @@ string gateToString(Gate *gate) {
   return oss.str();
 }
 
-CompiledTimeSlice compileTimeslices(vector<OpTimeSlice *> TS) {
-  // Calculating matrix at timeslice from R to L
-  // CompiledTimeslice C_TS;
-  // vector<Matrix> TS_Vec;
-  Matrix M = TS.at(TS.size() - 1)->toTransformation();
-  for (int i = (TS.size() - 2); i >= 0; i--) {
-    M = matrixMultiply(M, TS.at(i)->toTransformation());
-  }
-  return CompiledTimeSlice(M);
-}
-
 // Grovers function
 // void GroversAlgo(int nQubits, string SV_String){
 //   //setup state vector and operator circuit
@@ -800,6 +822,12 @@ int main(void) {
   circuit.print();
   printStateVector(circuit.run(makeStateVector(2)));
 
+  circuit.compile();
+
+  circuit.print();
+
+  printStateVector(circuit.run(makeStateVector(2)));
+
   auto c2 = parseCircuitDiagram("|0>-H\n"
                                 "|0>--");
   c2.print();
@@ -810,7 +838,6 @@ int main(void) {
   c3.print();
   printStateVector(c3.run(makeStateVector(2)));
 
-  return 0;
   // Slices & Tensoring //
 
   GateTimeSlice TS_0({}, 3);
