@@ -201,12 +201,12 @@ Matrix tensorProduct(Matrix M, Matrix N) {
 }
 
 Matrix tensorSeries(vector<Matrix> M_Vec) {
-  cerr << "start tensorseries\n";
+  //  cerr << "start tensorseries\n";
   Matrix U = M_Vec.at(0);
   for (int i = 1; i < M_Vec.size(); i++) {
     U = tensorProduct(U, M_Vec.at(i));
   }
-  cerr << "end tensorseries\n";
+  //  cerr << "end tensorseries\n";
 
   return U;
 }
@@ -484,7 +484,7 @@ public:
 class CompiledTimeSlice : public OpTimeSlice {
 public:
   Matrix theMatrix;
-  //  CompiledTimeSlice(Matrix m) : theMatrix(m){};
+  CompiledTimeSlice(Matrix m) : theMatrix(m){};
   CompiledTimeSlice(vector<OpTimeSlice *> TS) {
     // Calculating matrix at timeslice from R to L
     // CompiledTimeslice C_TS;
@@ -542,7 +542,7 @@ function wrap here. */
 public:
   pair<optional<ControlledGate *>, vector<Matrix>> toPreTensorInfo(
       /*vector<Gate *> _gates, int num_of_wires*/) const {
-    cerr << "start transform\n";
+    //    cerr << "start transform\n";
     vector<Matrix> M_Vec(nQubits, I);
     // currently testing an implementation allowing for more than one
     // controlled operation per slice
@@ -626,6 +626,18 @@ public:
       newProgram.push_back(new CompiledTimeSlice(acc));
     }
     program = newProgram;
+  }
+
+  void preTensor() {
+    cerr << "start pretensor\n";
+    vector<TimeSlice *> newProgram;
+    for (auto slice : program) {
+      if (auto *op = dynamic_cast<OpTimeSlice *>(slice)) {
+        newProgram.push_back(new CompiledTimeSlice(op->toTransformation()));
+      }
+    }
+    program = newProgram;
+    cerr << "end pretensor\n";
   }
 
   // Helpers //
@@ -714,14 +726,14 @@ optional<TimeSlice *> tryParseSimpleDiagramSlice(vector<char> slice) {
   GateTimeSlice *TS = new GateTimeSlice(slice.size());
 
   for (size_t idx = 0; idx < slice.size(); idx++) {
-    if (auto oQG = tryParseOneQubitGate(slice[idx])) {
-      auto gate = static_cast<OneQubitGate *>(oQG.value());
-      gate->wireIdx = idx;
-      TS->gates.push_back(gate);
-    } else if (auto tQG = tryParseControlledGate(slice[idx])) {
+    if (auto tQG = tryParseControlledGate(slice[idx])) {
       auto gate = static_cast<ControlledGate *>(tQG.value());
       gate->targetWireIdx = {idx};
       gate->controlWireIdx = {findControlMark(idx, slice[idx], slice)};
+      TS->gates.push_back(gate);
+    } else if (auto oQG = tryParseOneQubitGate(slice[idx])) {
+      auto gate = static_cast<OneQubitGate *>(oQG.value());
+      gate->wireIdx = idx;
       TS->gates.push_back(gate);
     }
   }

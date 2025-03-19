@@ -31,22 +31,23 @@ __global__ void QProgramKernel(size_t nOps, size_t sLen, Complex *matrices,
   return;
 }
 
-__device__ void cuTensorProduct(size_t sLen, Complex *M, Complex *N, Complex *P) {
+__device__ void cuTensorProduct(size_t sLen, Complex *M, Complex *N,
+                                Complex *P) {
   int mRow = blockIdx.y * 32 + threadIdx.y;
   int mCol = blockIdx.x * 32 + threadIdx.x;
-  if(mRow > sLen || mCol > sLen){
+  if (mRow > sLen || mCol > sLen) {
     return;
   }
 
   // dimensions of P = len(M) * len(N)
-  //since len(N) always = 2 & len(M) = sLen --> P = sLen * 2
+  // since len(N) always = 2 & len(M) = sLen --> P = sLen * 2
   int pLen = sLen * 2;
 
-  Complex mVal = M[(mRow * sLen) +mCol];
-  ///TODO check that it doesnt overflow the thisVal part
+  Complex mVal = M[(mRow * sLen) + mCol];
+  /// TODO check that it doesnt overflow the thisVal part
 
-  for(int col_i = 0; col_i < 2; col_i++) {
-    for(int row_i = 0; row_i < 2; row_i++) {
+  for (int col_i = 0; col_i < 2; col_i++) {
+    for (int row_i = 0; row_i < 2; row_i++) {
       Complex nVal = N[(row_i * 2) + col_i];
       int P_row = (2 * mRow) + row_i;
       int P_col = (2 * mCol) + col_i;
@@ -56,22 +57,23 @@ __device__ void cuTensorProduct(size_t sLen, Complex *M, Complex *N, Complex *P)
 }
 
 __global__ void QTensorKernel(size_t nMatrices, size_t matrixSideLength,
-                              Complex *matrices, Complex *outMatrix, Complex *scratchMatrix) {
+                              Complex *matrices, Complex *outMatrix,
+                              Complex *scratchMatrix) {
   // outMatrix already contains matrices[0]
   for (size_t idx = 1; idx < nMatrices; idx++) {
     Complex *matrixBP = matrices + (idx * matrixSideLength * matrixSideLength);
-    //Set the matrix side length to = sizeOutMatrix * 2
-    // M tensor N = P (where P is in our scratch/temp matrix)
+    // Set the matrix side length to = sizeOutMatrix * 2
+    //  M tensor N = P (where P is in our scratch/temp matrix)
     cuTensorProduct(matrixSideLength, outMatrix, matrixBP, scratchMatrix);
     __syncthreads();
-    //copy the scratch/P matrix into the outMatrix and move to the next tensor
-    memcpy(outMatrix, scratchMatrix, pow(matrixSideLength*2, 2));
+    // copy the scratch/P matrix into the outMatrix and move to the next tensor
+    //    memcpy(outMatrix, scratchMatrix, pow(matrixSideLength * 2, 2));
   }
 }
 
 void lowerMatrix(Matrix m, Complex *matrices, size_t baseOffset) {
   Complex *bp = matrices + baseOffset;
-  cerr << "bp is " << bp << "\n";
+  //  cerr << "bp is " << bp << "\n";
   for (size_t idy = 0; idy < m.size(); idy++) {
     for (size_t idx = 0; idx < m.size(); idx++) {
       bp[(idy * m.size()) + idx] = m[idy][idx];
@@ -111,17 +113,13 @@ void printOutVectors(Complex *OV, size_t sLen, size_t nP) {
   return;
 }
 
-int ceilDiv(int a, int b)
-{
-    return ceil((float) a / float(b));
-}
-
+int ceilDiv(int a, int b) { return ceil((float)a / float(b)); }
 
 Complex *gpu_toTransformationMatrix(
     pair<optional<ControlledGate *>, vector<Matrix>> pti) {
   if (pti.first) {
     // TODO on gpu
-    exit(1);
+    // exit(1);
     /*auto g = pti.first.value();
     return collapseMCMT(pti.second, g->toMatrix(), g->controlWireIdx,
                         g->targetWireIdx);*/
@@ -133,18 +131,19 @@ Complex *gpu_toTransformationMatrix(
   size_t sizeOfMatrices = sizeOfMatrix * nMatrices;
 
   Complex *matrices = (Complex *)malloc(sizeOfMatrix * nMatrices);
-  cerr << "lowering for tensor\n";
+  //  cerr << "lowering for tensor\n";
 
   size_t pc = 0;
   for (auto mat : series) {
     lowerMatrix(mat, matrices, pc * matrixSideLength * matrixSideLength);
   }
 
-  cerr << "end lowering for tensor\n";
+  // cerr << "end lowering for tensor\n";
 
   Complex *d_matrices;
   cudaMalloc((void **)&d_matrices, sizeOfMatrices);
   cudaMemcpy(d_matrices, matrices, sizeOfMatrices, cudaMemcpyHostToDevice);
+  // cerr << "end d_matrices copy\n";
 
   size_t outMatrixSideLength = pow(2, series.size());
   size_t totalOutMatrixSize =
@@ -156,15 +155,19 @@ Complex *gpu_toTransformationMatrix(
   Complex *d_scratchMatrix;
   cudaMalloc((void **)&d_outMatrix, totalOutMatrixSize);
   cudaMalloc((void **)&d_scratchMatrix, totalOutMatrixSize);
-  cudaMemcpy(d_outMatrix, matrices, totalOutMatrixSize, cudaMemcpyHostToDevice);
+  //  cudaMemcpy(d_outMatrix, matrices, totalOutMatrixSize,
+  //  cudaMemcpyHostToDevice);
 
-  // TODO dims
-  dim3 dimBlock(32,32);
-  dim3 dimGrid(ceilDiv(outMatrixSideLength, 32), ceilDiv(outMatrixSideLength, 32));
+  // cerr << "end copying\n";
+  //  TODO dims
+  dim3 dimBlock(32, 32);
+  dim3 dimGrid(ceilDiv(outMatrixSideLength, 32),
+               ceilDiv(outMatrixSideLength, 32));
   QTensorKernel<<<dimGrid, dimBlock>>>(nMatrices, matrixSideLength, d_matrices,
                                        d_outMatrix, d_scratchMatrix);
   cudaMemcpy(outMatrix, d_outMatrix, totalOutMatrixSize,
              cudaMemcpyDeviceToHost);
+  // cerr << "end tensoring\n";
   return outMatrix;
 }
 
@@ -182,15 +185,16 @@ ResultVector runCircuitOnGPU(Circuit C, StateVector SV) {
 
   Complex *matrices = (Complex *)malloc(sizeOfMatrix * C.operationsCount());
 
-  cerr << "base matrices is " << matrices << "\n";
+  //  cerr << "base matrices is " << matrices << "\n";
 
   size_t pc = 0;
 
-  cerr << "lowering matrices\n";
+  //  cerr << "start tensoring\n";
 
+  cerr << C.program.size();
   for (auto slice : C.program) {
     if (auto *op = dynamic_cast<GateTimeSlice *>(slice)) {
-      cerr << "start lowering\n";
+      // cerr << "start lowering\n";
 
       Complex *transformationMatrix =
           gpu_toTransformationMatrix(op->toPreTensorInfo());
@@ -201,23 +205,17 @@ ResultVector runCircuitOnGPU(Circuit C, StateVector SV) {
                   matrices + (pc * matrixSideLength * matrixSideLength),
                   matrixSideLength);
 
-      cerr << "end lowering\n";
+      // cerr << "end lowering\n";
       pc++;
+      // cerr << "tick\n";
     } else {
-      cout << "no-op after compilation\n";
-      exit(1);
+      cerr << "no-op after compilation\n";
+      // exit(1);
     }
   }
+  //  cerr << "end tensoring\n";
 
-  cerr << "lowered matrices\n";
-
-  Complex *h_inVector =
-      lowerStateVector(SV); // malloc(sizeof(Complex) * matrixSideLength);
-                            //    lowerStateVector(h_inVector, SV);
-  Complex *d_inVector;
-  cudaMalloc((void **)&d_inVector, sizeof(Complex) * matrixSideLength);
-  cudaMemcpy(d_inVector, h_inVector, sizeof(Complex) * matrixSideLength,
-             cudaMemcpyHostToDevice);
+  // return {SV};
 
   size_t nOps = C.program.size();
 
@@ -229,44 +227,57 @@ ResultVector runCircuitOnGPU(Circuit C, StateVector SV) {
   size_t totalOutVectorSize = nOps * matrixSideLength * sizeof(Complex);
   Complex *d_outVectors;
   cudaMalloc((void **)&d_outVectors, totalOutVectorSize);
-  cerr << "launching\n";
+  // cerr << "launching\n";
 
-  // dim3 dimGrid(1, 1);
-  dim3 dimGrid(1);
-  // TODO wrong add multi blocks
-  dim3 dimBlock(1024);
+  for (size_t idx = 0; idx < 100; idx++) {
 
-  QProgramKernel<<<dimGrid, dimBlock>>>(nOps, matrixSideLength, d_matrices,
-                                        d_inVector, d_outVectors);
-  cerr << "launched\n";
+    Complex *h_inVector =
+        lowerStateVector(SV); // malloc(sizeof(Complex) * matrixSideLength);
+                              //    lowerStateVector(h_inVector, SV);
+    Complex *d_inVector;
+    cudaMalloc((void **)&d_inVector, sizeof(Complex) * matrixSideLength);
+    cudaMemcpy(d_inVector, h_inVector, sizeof(Complex) * matrixSideLength,
+               cudaMemcpyHostToDevice);
 
-  Complex *h_outVectors = (Complex *)malloc(totalOutVectorSize);
+    // dim3 dimGrid(1, 1);
+    dim3 dimGrid(1);
+    // TODO wrong add multi blocks
+    dim3 dimBlock(1024);
 
-  cudaMemcpy(h_outVectors, d_outVectors, totalOutVectorSize,
-             cudaMemcpyDeviceToHost);
+    QProgramKernel<<<dimGrid, dimBlock>>>(nOps, matrixSideLength, d_matrices,
+                                          d_inVector, d_outVectors);
+    //  cerr << "launched\n";
 
-  cerr << "memcpyd\n";
+    Complex *h_outVectors = (Complex *)malloc(totalOutVectorSize);
 
-  printOutVectors(h_outVectors, matrixSideLength, nOps);
+    cudaMemcpy(h_outVectors, d_outVectors, totalOutVectorSize,
+               cudaMemcpyDeviceToHost);
+
+    //  cerr << "memcpyd\n";
+  }
+  // cerr << "done";
+  //  printOutVectors(h_outVectors, matrixSideLength, nOps);
   return {};
 }
 
 int main(int argc, char *argv[]) {
   int v = atoi(argv[1]); /*auto circuit = parseCircuitDiagram("|0>-H-.---x\n"
                                     "|0>-H-Z-H-x\n");*/
-  auto c = parseCircuitDiagram("|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n"
-                               "|0>HHH\n");
+                         /*auto c = parseCircuitDiagram("|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n"
+                                                      "|0>HHH\n");*/
+  Circuit c = groversCircuit_NR(10, "1101010101");
+  // StateVector SV = makeStateVector(10);
   // c.compile();
   if (v == 1) {
     cerr << "cpu\n";
@@ -274,7 +285,8 @@ int main(int argc, char *argv[]) {
     c.run(makeStateVector(13));
   } else if (v == 0) {
     cerr << "gpu\n";
-    runCircuitOnGPU(c, makeStateVector(13));
+    //  StateVector SV = makeStateVector(10);
+    runCircuitOnGPU(c, makeStateVector(10));
   } else {
     return 0;
   }
