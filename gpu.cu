@@ -45,11 +45,11 @@ __device__ void cuTensorProduct(size_t sLen, Complex *M, Complex *N, Complex *P)
 
   // }
   for(int col_i = 0; col_i < 2; col_i++) {
-    for(int row_i = 0; col_i < 2; col_i) {
+    for(int row_i = 0; row_i < 2; row_i++) {
       Complex nVal = N[(row_i * 2) + col_i];
       int P_row = (2 * mRow) + row_i;
       int P_col = (2 * mCol) + col_i;
-      P[(P_row * pLen) + pCol] = Complex(mVal.x * nVal.x, mVal.y * nVal.y);
+      P[(P_row * pLen) + P_col] = Complex(mVal.x * nVal.x, mVal.y * nVal.y);
     }
   }
 }
@@ -62,9 +62,9 @@ __global__ void QTensorKernel(size_t nMatrices, size_t matrixSideLength,
     //Set the matrix side length to = sizeOutMatrix * 2
     // M tensor N = P (where P is in our scratch/temp matrix)
     cuTensorProduct(matrixSideLength, outMatrix, matrixBP, scratchMatrix);
-    __sync_threads();
-    //TODO copy the scratch/P matrix into the outMatrix and move to the next tensor
-    memcpy(outMatrx, scratchMatrix, pow(sLen*2, 2));
+    __syncthreads();
+    //copy the scratch/P matrix into the outMatrix and move to the next tensor
+    memcpy(outMatrix, scratchMatrix, pow(matrixSideLength*2, 2));
   }
 }
 
@@ -236,7 +236,7 @@ ResultVector runCircuitOnGPU(Circuit C, StateVector SV) {
   dim3 dimBlock(1024);
 
   QProgramKernel<<<dimGrid, dimBlock>>>(nOps, matrixSideLength, d_matrices,
-                                        d_inVector, d_outVectors, d_ou);
+                                        d_inVector, d_outVectors);
   cerr << "launched\n";
 
   Complex *h_outVectors = (Complex *)malloc(totalOutVectorSize);
