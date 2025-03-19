@@ -9,7 +9,7 @@ int main(void) {
 
 
   */
-
+  /*
   // parse test
   auto circuit = parseCircuitDiagram("|0>-H-.!---x!\n"
                                      "|0>-H-Z!-H-x!\n");
@@ -167,6 +167,12 @@ int main(void) {
   auto SV = makeTargetStateVector("100");
   testStateVectorsEqual(SV, {Complex(1, 0), Complex(0, 0), Complex(0, 0)},
                         "Test Target State Vector", 1);
+  */
+
+
+  Circuit circuit = groversCircuit_NR(3, "101");
+  StateVector SV = makeStateVector(3);
+  circuit.compile();
 
   printStateVector(circuit.run(SV));
 }
