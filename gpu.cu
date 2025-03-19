@@ -31,16 +31,40 @@ __global__ void QProgramKernel(size_t nOps, size_t sLen, Complex *matrices,
   return;
 }
 
-__device__ void cuTensorProduct(size_t sLen, Complex *M, Complex *N) {
-  // TODO
+__device__ void cuTensorProduct(size_t sLen, Complex *M, Complex *N, Complex *P) {
+  int mRow = blockIdx.y * 32 + threadIdx.y;
+  int mCol = blockIdx.x * 32 + threadIdx.x;
+
+  // dimensions of P = len(M) * len(N)
+  //since len(N) always = 2 & len(M) = sLen --> P = sLen * 2
+  int pLen = sLen * 2;
+
+  Complex mVal = M[(mRow * sLen) +mCol];
+  ///TODO check that it doesnt overflow the thisVal part
+  // if(){
+
+  // }
+  for(int col_i = 0; col_i < 2; col_i++) {
+    for(int row_i = 0; col_i < 2; col_i) {
+      Complex nVal = N[(row_i * 2) + col_i];
+      int P_row = (2 * mRow) + row_i;
+      int P_col = (2 * mCol) + col_i;
+      P[(P_row * pLen) + pCol] = Complex(mVal.x * nVal.x, mVal.y * nVal.y);
+    }
+  }
 }
 
 __global__ void QTensorKernel(size_t nMatrices, size_t matrixSideLength,
-                              Complex *matrices, Complex *outMatrix) {
+                              Complex *matrices, Complex *outMatrix, Complex *scratchMatrix) {
   // outMatrix already contains matrices[0]
   for (size_t idx = 1; idx < nMatrices; idx++) {
     Complex *matrixBP = matrices + (idx * matrixSideLength * matrixSideLength);
-    cuTensorProduct(matrixSideLength, outMatrix, matrixBP);
+    //Set the matrix side length to = sizeOutMatrix * 2
+    // M tensor N = P (where P is in our scratch/temp matrix)
+    cuTensorProduct(matrixSideLength, outMatrix, matrixBP, scratchMatrix);
+    __sync_threads();
+    //TODO copy the scratch/P matrix into the outMatrix and move to the next tensor
+    memcpy(outMatrx, scratchMatrix, pow(sLen*2, 2));
   }
 }
 
@@ -86,6 +110,12 @@ void printOutVectors(Complex *OV, size_t sLen, size_t nP) {
   return;
 }
 
+int ceilDiv(int a, int b)
+{
+    return ceil((float) a / float(b));
+}
+
+
 Complex *gpu_toTransformationMatrix(
     pair<optional<ControlledGate *>, vector<Matrix>> pti) {
   if (pti.first) {
@@ -122,13 +152,16 @@ Complex *gpu_toTransformationMatrix(
   Complex *outMatrix = (Complex *)malloc(totalOutMatrixSize);
 
   Complex *d_outMatrix;
+  Complex *d_scratchMatrix;
   cudaMalloc((void **)&d_outMatrix, totalOutMatrixSize);
+  cudaMalloc((void **)&d_scratchMatrix, totalOutMatrixSize);
   cudaMemcpy(d_outMatrix, matrices, totalOutMatrixSize, cudaMemcpyHostToDevice);
 
   // TODO dims
-
+  dim3 dimBlock(32,32);
+  dim3 dimGrid(ceilDiv(outMatrixSideLength, 32), ceilDiv(outMatrixSideLength, 32));
   QTensorKernel<<<dimGrid, dimBlock>>>(nMatrices, matrixSideLength, d_matrices,
-                                       d_outMatrix);
+                                       d_outMatrix, d_scratchMatrix);
   cudaMemcpy(outMatrix, d_outMatrix, totalOutMatrixSize,
              cudaMemcpyDeviceToHost);
   return outMatrix;
@@ -203,7 +236,7 @@ ResultVector runCircuitOnGPU(Circuit C, StateVector SV) {
   dim3 dimBlock(1024);
 
   QProgramKernel<<<dimGrid, dimBlock>>>(nOps, matrixSideLength, d_matrices,
-                                        d_inVector, d_outVectors);
+                                        d_inVector, d_outVectors, d_ou);
   cerr << "launched\n";
 
   Complex *h_outVectors = (Complex *)malloc(totalOutVectorSize);
