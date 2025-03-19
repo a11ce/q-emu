@@ -168,5 +168,5 @@ int main(void) {
   testStateVectorsEqual(SV, {Complex(1, 0), Complex(0, 0), Complex(0, 0)},
                         "Test Target State Vector", 1);
 
-  return 0;
+  printStateVector(circuit.run(SV));
 }

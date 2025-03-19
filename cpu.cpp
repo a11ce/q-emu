@@ -1,6 +1,7 @@
 #include <cmath>
 #include <iostream>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <vector>
@@ -297,9 +298,7 @@ vector<vector<int>> cartesian_product_01(int n) {
   for (int i = 0; i < num_combinations; ++i) {
     for (int j = n - 1; j >= 0; --j) {
       carts.at(i).at(j) = ((i >> j) & 1);
-      cout << ((i >> j) & 1) << " ";
     }
-    cout << endl;
   }
   return carts;
 }
@@ -798,41 +797,131 @@ Circuit parseCircuitDiagram(string D) {
   return circuit;
 }
 
-// Grovers function
-// void GroversAlgo(int nQubits, string SV_String){
-//   //setup state vector and operator circuit
-//   StateVector SV = makeTargetStateVector(SV_String);
-//   Circuit Grov_Oper(nQubits);
-
-//   //oracle for SV configuration
-//     //set MCMT Z operation on |1> qubits in SV
-//   GateTimeSlice()
-//   for(auto c : SV){
-
-//   }
-
-//   //diffusion operator
-// }
-
-void groversCircuit(int nQubits, string SV_String) {
+/*
+#This is a slightly different version of Grover's algo, the one below is mildly more efficient but I'm still testing if it works on
+#a variety of cases
+Circuit groversCircuit(int nQubits, string SV_String, size_t iters = 1) {
   // setup state vector and operator circuit
   StateVector SV = makeTargetStateVector(SV_String);
   Circuit Grover(nQubits);
   vector<size_t> one_ind;
   vector<size_t> zero_ind;
-
+  //this is probs not useful but im lazy
+  vector<size_t> n_vec;
   // Init
-  GateTimeSlice TS_AllSuperposition(nQubits);
+  GateTimeSlice* HGate_TS = new GateTimeSlice(nQubits);
+  GateTimeSlice* XGate_TS = new GateTimeSlice(nQubits);
   for (int i = 0; i < nQubits; i++) {
-    TS_AllSuperposition.addGate(new H_Gate(i));
-    if (SV.at(i).x == 0) {
+    HGate_TS->addGate(new H_Gate(i));
+    XGate_TS->addGate(new X_Gate(i));
+    n_vec.push_back(i);
+    if (SV.at(i).x == 1) {
       one_ind.push_back(i);
+    } else {
+      zero_ind.push_back(i);
     }
   }
 
-  // Oracle
+  // Oracle -> marks our desired state using phase-flips on the appr. 1 qubits
+  GateTimeSlice* Oracle_TS = new GateTimeSlice(nQubits);
+  if (one_ind.size() == 1) {
+    Oracle_TS->addGate(new Z_Gate(one_ind.at(0)));
+  } else if(one_ind.size() > 1) {
+    // CU_Gate(vector<int>)
+    Oracle_TS->addGate(new CU_Gate(vector<size_t>(one_ind.begin(), one_ind.end()
+- 1), {one_ind.at(one_ind.size() - 1)}, Z));
+  }
 
   // Diffusion
+  GateTimeSlice* DiffPhaseFlip_TS = new GateTimeSlice(nQubits);
+  DiffPhaseFlip_TS->addGate(new CU_Gate(vector<size_t>(n_vec.begin(),
+n_vec.end() - 1), {n_vec.at(nQubits - 1)}, Z));
 
-  // Repeat???
+  //Smash it all together!
+    // See
+https://github.com/Qiskit/textbook/blob/main/notebooks/ch-algorithms/grover.ipynb
+- Example 3 for why this ordering
+  //Init
+  Grover.addTimeSlice(HGate_TS);
+
+  //run for n iterations stacking this bad boy up with successive oracle +
+diffusion (HGate_TS + XGate_TS + DiffPhaseFlip_TS + XGate_TS + HGate_TS) for(int
+i = 0; i < iters; i++) { cout << "Stacking Grover's Operator Iteration: " << i +
+1 << "\n";
+    //Oracle
+    Grover.addTimeSlice(Oracle_TS);
+    //Amplification
+    Grover.addTimeSlice(HGate_TS);
+    Grover.addTimeSlice(XGate_TS);
+    Grover.addTimeSlice(DiffPhaseFlip_TS);
+    Grover.addTimeSlice(XGate_TS);
+    Grover.addTimeSlice(HGate_TS);
+  }
+
+  cout << "Finished Creating Grover Circuit w/ " << iters << " Grov. Op Cycles!
+\n"; return Grover;
+}
+*/
+Circuit groversCircuit_NR(int nQubits, string SV_String, size_t iters = 1) {
+  // setup state vector and operator circuit
+  StateVector SV = makeTargetStateVector(SV_String);
+  Circuit Grover(nQubits);
+  vector<size_t> one_ind;
+  vector<size_t> zero_ind;
+  // this is probs not useful but im lazy
+  vector<size_t> n_vec;
+  // Init
+  GateTimeSlice *HGate_TS = new GateTimeSlice(nQubits);
+  GateTimeSlice *XGate_TS = new GateTimeSlice(nQubits);
+  for (int i = 0; i < nQubits; i++) {
+    n_vec.push_back(i);
+    if (SV.at(i).x == 1) {
+      HGate_TS->addGate(new H_Gate(i));
+      XGate_TS->addGate(new X_Gate(i));
+      one_ind.push_back(i);
+    } else {
+      zero_ind.push_back(i);
+    }
+  }
+
+  // Oracle -> marks our desired state using phase-flips on the appr. 1 qubits
+  GateTimeSlice *Oracle_TS = new GateTimeSlice(nQubits);
+  if (one_ind.size() == 1) {
+    Oracle_TS->addGate(new Z_Gate(one_ind.at(0)));
+  } else if (one_ind.size() > 1) {
+    // CU_Gate(vector<int>)
+    Oracle_TS->addGate(
+        new CU_Gate(vector<size_t>(one_ind.begin(), one_ind.end() - 1),
+                    {one_ind.at(one_ind.size() - 1)}, Z));
+  }
+
+  // Diffusion
+  // GateTimeSlice* DiffPhaseFlip_TS = new GateTimeSlice(nQubits);
+  // DiffPhaseFlip_TS->addGate(new CU_Gate(vector<size_t>(n_vec.begin(),
+  // n_vec.end() - 1), {n_vec.at(nQubits - 1)}, Z));
+
+  // Smash it all together!
+  //  See
+  //  https://github.com/Qiskit/textbook/blob/main/notebooks/ch-algorithms/grover.ipynb
+  //  - Example 3 for why this ordering
+  // Init
+  Grover.addTimeSlice(HGate_TS);
+
+  // run for n iterations stacking this bad boy up with successive oracle +
+  // diffusion (HGate_TS + XGate_TS + DiffPhaseFlip_TS + XGate_TS + HGate_TS)
+  for (int i = 0; i < iters; i++) {
+    cout << "Stacking Grover's Operator Iteration: " << i + 1 << "\n";
+    // Oracle
+    Grover.addTimeSlice(Oracle_TS);
+    // Amplification
+    Grover.addTimeSlice(HGate_TS);
+    Grover.addTimeSlice(XGate_TS);
+    Grover.addTimeSlice(Oracle_TS);
+    Grover.addTimeSlice(XGate_TS);
+    Grover.addTimeSlice(HGate_TS);
+  }
+
+  cout << "Finished Creating Grover Circuit w/ " << iters
+       << " Grov. Op Cycles! \n";
+  return Grover;
 }
