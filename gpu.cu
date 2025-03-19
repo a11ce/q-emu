@@ -34,6 +34,9 @@ __global__ void QProgramKernel(size_t nOps, size_t sLen, Complex *matrices,
 __device__ void cuTensorProduct(size_t sLen, Complex *M, Complex *N, Complex *P) {
   int mRow = blockIdx.y * 32 + threadIdx.y;
   int mCol = blockIdx.x * 32 + threadIdx.x;
+  if(mRow > sLen || mCol > sLen){
+    return;
+  }
 
   // dimensions of P = len(M) * len(N)
   //since len(N) always = 2 & len(M) = sLen --> P = sLen * 2
@@ -41,9 +44,7 @@ __device__ void cuTensorProduct(size_t sLen, Complex *M, Complex *N, Complex *P)
 
   Complex mVal = M[(mRow * sLen) +mCol];
   ///TODO check that it doesnt overflow the thisVal part
-  // if(){
 
-  // }
   for(int col_i = 0; col_i < 2; col_i++) {
     for(int row_i = 0; row_i < 2; row_i++) {
       Complex nVal = N[(row_i * 2) + col_i];
