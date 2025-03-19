@@ -1,7 +1,6 @@
 #include "cpu.cpp"
 
 int main(void) {
-
   /*
   - Xparse swap into 3 cnots
   - Xparse bangs into peek timeslice
@@ -12,15 +11,17 @@ int main(void) {
   */
 
   // parse test
-  auto circuit = parseCircuitDiagram("|0>-H-.!---x\n"
-                                     "|0>-H-Z!-H-x\n");
+  auto circuit = parseCircuitDiagram("|0>-H-.!---x!\n"
+                                     "|0>-H-Z!-H-x!\n");
 
   circuit.print();
   printStateVector(circuit.run(makeStateVector(2)));
-
+  cerr << "compiling in main\n";
   circuit.compile();
+  cerr << "compiled in main\n";
 
   circuit.print();
+  return 0;
 
   printStateVector(circuit.run(makeStateVector(2)));
 

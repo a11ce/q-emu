@@ -11,10 +11,16 @@ using namespace std;
 class Complex {
 public:
   float x, y;
-  Complex(float _x, float _y) {
+#ifdef __NVCC__
+  __device__ __host__ Complex(float _x, float _y)
+#else
+  Complex(float _x, float _y)
+#endif
+  {
     x = _x;
     y = _y;
   }
+
   std::string toString() { return to_string(x) + "+" + to_string(y) + "i"; }
 };
 
@@ -95,8 +101,8 @@ StateVector makeTargetStateVector(string state) {
 // Test Functions
 int testMatrixEqual(Matrix M, Matrix M_expected, string test_name = "",
                     int print_out = 0) {
-  // assuming square matrices (probably a better way to compare the matrixs but
-  // it is what it is)
+  // assuming square matrices (probably a better way to compare the matrixs
+  // but it is what it is)
   int passed = 1;
   if (M.size() != M_expected.size() ||
       M.at(0).size() != M_expected.at(0).size()) {
@@ -231,8 +237,8 @@ StateVector matrixVectorMultiply(StateVector SV, Matrix M) {
     Complex prod = Complex(0, 0);
     // iter rows of each col in M
     for (int col_i = 0; col_i < n_Cols_M; col_i++) {
-      // sparse matrix, add check for 0 in M[row_i][col_i], skip next for if 0
-      // (fine here) iter rows of SV vetor
+      // sparse matrix, add check for 0 in M[row_i][col_i], skip next for
+      // if 0 (fine here) iter rows of SV vetor
       prod.x += M[row_i][col_i].x * SV[col_i].x;
       prod.y += M[row_i][col_i].y * SV[col_i].y;
     }
@@ -274,11 +280,11 @@ Matrix collapseControlledMatrixVector(vector<Matrix> M_Vec, Matrix U,
   vector<Matrix> TS_Ctrl(M_Vec);
   vector<Matrix> TS_Targ(M_Vec);
   // this essentially encodes two scenarios:
-  // 1.) when the control qubit is 0, the target function should be the identity
-  // (i.e. leave it alone) 2.) when the control qubit is 1, the target function
-  // should be the given matrix U
-  // these two "scenarios" have to then be tensored and added together to
-  // correctly encode any 2 qubit controlled operation
+  // 1.) when the control qubit is 0, the target function should be the
+  // identity (i.e. leave it alone) 2.) when the control qubit is 1, the
+  // target function should be the given matrix U these two "scenarios" have
+  // to then be tensored and added together to correctly encode any 2 qubit
+  // controlled operation
   TS_Ctrl.at(control) = Proj_0;
   TS_Targ.at(control) = Proj_1;
   TS_Targ.at(target) = U;
@@ -527,11 +533,11 @@ function wrap here. */
   }
 
 private:
-  Matrix
-  toTransformationAux(/*vector<Gate *> _gates, int num_of_wires*/) const {
+  Matrix toTransformationAux(
+      /*vector<Gate *> _gates, int num_of_wires*/) const {
     vector<Matrix> M_Vec(nQubits, I);
-    // currently testing an implementation allowing for more than one controlled
-    // operation per slice
+    // currently testing an implementation allowing for more than one
+    // controlled operation per slice
     vector<ControlledGate *> control_queue;
     for (auto g : this->gates) {
       // if gate is control (not best way to do this but it works for now)
@@ -545,8 +551,8 @@ private:
       }
     }
     if (!control_queue.empty()) {
-      // again, leaving this as a "queue"/vector for the above reasons even
-      // though it currently will only pull the first
+      // again, leaving this as a "queue"/vector for the above reasons
+      // even though it currently will only pull the first
       ControlledGate *g = control_queue.at(0);
       return collapseMCMT(
             M_Vec, g->toMatrix(), g->controlWireIdx, g->targetWireIdx);
@@ -571,6 +577,8 @@ public:
     for (int i = 0; i < sliceIdx; i++) {
       if (const auto *op = dynamic_cast<OpTimeSlice *>(program.at(i))) {
         SV_t = matrixVectorMultiply(SV_t, op->toTransformation());
+      } else {
+        printStateVector(SV_t);
       }
     }
     return SV_t;
@@ -579,6 +587,16 @@ public:
   // Computes the final state vector of the circuit
   StateVector run(StateVector SV) {
     return runToPosition(SV, program.size());
+  }
+
+  size_t operationsCount() {
+    size_t count = 0;
+    for (auto slice : program) {
+      if (dynamic_cast<OpTimeSlice *>(slice)) {
+        count++;
+      }
+    }
+    return count;
   }
 
   void compile() {
@@ -590,10 +608,12 @@ public:
       } else {
         newProgram.push_back(new CompiledTimeSlice(acc));
         acc = {};
-        newProgram.push_back(slice);
+        // newProgram.push_back(slice);
       }
     }
-    newProgram.push_back(new CompiledTimeSlice(acc));
+    if (!acc.empty()) {
+      newProgram.push_back(new CompiledTimeSlice(acc));
+    }
     program = newProgram;
   }
 
@@ -676,7 +696,6 @@ bool isNonSemanticDiagramSlice(vector<char> slice) {
 
 // a simple diagram slice parses to a single time slice
 optional<TimeSlice *> tryParseSimpleDiagramSlice(vector<char> slice) {
-
   if (trySingleCharOfDiagramSlice(slice) == '!') {
     return new PeekTimeSlice();
   }
@@ -703,7 +722,6 @@ optional<TimeSlice *> tryParseSimpleDiagramSlice(vector<char> slice) {
 }
 
 optional<vector<TimeSlice *>> tryParseSwapGate(vector<char> slice) {
-
   vector<size_t> swapQubits;
   bool seenOtherGate;
   for (size_t idx = 0; idx < slice.size(); idx++) {
