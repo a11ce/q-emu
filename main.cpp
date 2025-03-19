@@ -21,7 +21,7 @@ int main(void) {
   cerr << "compiled in main\n";
 
   circuit.print();
-  return 0;
+  //  return 0;
 
   printStateVector(circuit.run(makeStateVector(2)));
 

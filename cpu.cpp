@@ -201,16 +201,20 @@ Matrix tensorProduct(Matrix M, Matrix N) {
 }
 
 Matrix tensorSeries(vector<Matrix> M_Vec) {
+  cerr << "start tensorseries\n";
   Matrix U = M_Vec.at(0);
   for (int i = 1; i < M_Vec.size(); i++) {
     U = tensorProduct(U, M_Vec.at(i));
   }
+  cerr << "end tensorseries\n";
+
   return U;
 }
 
 Matrix matrixMultiply(Matrix M, Matrix N) {
   // implied : if M.size() = M.at(0).size() & (same for N) & M.size() ==
   // N.size()
+  cerr << "start matrixmult\n";
   Matrix P = initSquareMatrix(M.size());
   int numRows = M.size();
   int numCols = M.size();
@@ -223,6 +227,7 @@ Matrix matrixMultiply(Matrix M, Matrix N) {
       }
     }
   }
+  cerr << "end matrixmult\n";
 
   return P;
 }
@@ -363,8 +368,8 @@ public:
   }
 
 protected:
-  OneQubitGate() {};
-  OneQubitGate(size_t w) : wireIdx(w) {};
+  OneQubitGate(){};
+  OneQubitGate(size_t w) : wireIdx(w){};
 };
 
 class ControlledGate : public Gate {
@@ -380,19 +385,19 @@ public:
   }
 
 protected:
-  ControlledGate() {};
+  ControlledGate(){};
   ControlledGate(size_t c, size_t t) {
     controlWireIdx = {c};
     targetWireIdx = {t};
   };
   ControlledGate(vector<size_t> c, vector<size_t> t)
-      : controlWireIdx(c), targetWireIdx(t) {};
+      : controlWireIdx(c), targetWireIdx(t){};
 };
 
 class H_Gate : public OneQubitGate {
 public:
-  H_Gate() {};
-  H_Gate(size_t w) : OneQubitGate(w) {};
+  H_Gate(){};
+  H_Gate(size_t w) : OneQubitGate(w){};
 
   virtual string toGateString() const override { return "H"; };
   virtual Matrix toMatrix() const override {
@@ -403,8 +408,8 @@ public:
 
 class X_Gate : public OneQubitGate {
 public:
-  X_Gate() {};
-  X_Gate(size_t w) : OneQubitGate(w) {};
+  X_Gate(){};
+  X_Gate(size_t w) : OneQubitGate(w){};
 
   virtual string toGateString() const override { return "X"; };
   virtual Matrix toMatrix() const override {
@@ -415,8 +420,8 @@ public:
 
 class Z_Gate : public OneQubitGate {
 public:
-  Z_Gate() {};
-  Z_Gate(size_t w) : OneQubitGate(w) {};
+  Z_Gate(){};
+  Z_Gate(size_t w) : OneQubitGate(w){};
 
   virtual string toGateString() const override { return "Z"; };
   virtual Matrix toMatrix() const override {
@@ -428,8 +433,8 @@ public:
 
 class CX_Gate : public ControlledGate {
 public:
-  CX_Gate() {};
-  CX_Gate(size_t c, size_t t) : ControlledGate(c, t) {};
+  CX_Gate(){};
+  CX_Gate(size_t c, size_t t) : ControlledGate(c, t){};
   virtual string toGateString() const override { return "CX"; };
   virtual Matrix toMatrix() const override {
     return {{{0, 0}, {1, 0}}, //
@@ -439,8 +444,8 @@ public:
 
 class CZ_Gate : public ControlledGate {
 public:
-  CZ_Gate() {};
-  CZ_Gate(size_t c, size_t t) : ControlledGate(c, t) {};
+  CZ_Gate(){};
+  CZ_Gate(size_t c, size_t t) : ControlledGate(c, t){};
   virtual string toGateString() const override { return "CZ"; };
   virtual Matrix toMatrix() const override {
     return {{{1, 0}, {0, 0}}, {{0, 0}, {-1, 0}}};
@@ -452,9 +457,9 @@ protected:
   Matrix U;
 
 public:
-  CU_Gate() {};
+  CU_Gate(){};
   CU_Gate(vector<size_t> c, vector<size_t> t, Matrix u)
-      : U(u), ControlledGate(c, t) {};
+      : U(u), ControlledGate(c, t){};
   virtual string toGateString() const override { return "CU"; };
   virtual Matrix toMatrix() const override { return U; };
 };
@@ -467,7 +472,7 @@ public:
 
 class PeekTimeSlice : public TimeSlice {
 public:
-  PeekTimeSlice() {};
+  PeekTimeSlice(){};
   virtual string toString() const override { return "(peek)"; }
 };
 
@@ -484,6 +489,7 @@ public:
     // Calculating matrix at timeslice from R to L
     // CompiledTimeslice C_TS;
     // vector<Matrix> TS_Vec;
+    cerr << "start compiling a slice\n";
     components = TS.size();
 
     Matrix M = TS.at(TS.size() - 1)->toTransformation();
@@ -491,6 +497,7 @@ public:
       M = matrixMultiply(M, TS.at(i)->toTransformation());
     }
     theMatrix = M;
+    cerr << "end compiling a slice\n";
   }
 
 private:
@@ -508,9 +515,9 @@ public:
   size_t nQubits;
 
   GateTimeSlice(vector<Gate *> _gates, size_t _nQubits)
-      : gates(_gates), nQubits(_nQubits) {};
+      : gates(_gates), nQubits(_nQubits){};
 
-  GateTimeSlice(size_t nQ) : nQubits(nQ) {};
+  GateTimeSlice(size_t nQ) : nQubits(nQ){};
 
   void addGate(Gate *g) { gates.push_back(g); }
 
@@ -532,32 +539,38 @@ function wrap here. */
     return oss.str();
   }
 
-private:
-  Matrix toTransformationAux(
+public:
+  pair<optional<ControlledGate *>, vector<Matrix>> toPreTensorInfo(
       /*vector<Gate *> _gates, int num_of_wires*/) const {
+    cerr << "start transform\n";
     vector<Matrix> M_Vec(nQubits, I);
     // currently testing an implementation allowing for more than one
     // controlled operation per slice
-    vector<ControlledGate *> control_queue;
+    optional<ControlledGate *> controlGate = {};
     for (auto g : this->gates) {
       // if gate is control (not best way to do this but it works for now)
       if (auto *oneQG = dynamic_cast<OneQubitGate *>(g)) {
         M_Vec.at(oneQG->wireIdx) = oneQG->toMatrix();
       } else if (auto *twoQG = dynamic_cast<ControlledGate *>(g)) {
-        control_queue.push_back(twoQG);
+        controlGate = twoQG;
       } else {
         cout << "unknown gate type in toTransformation, somehow?\n";
         exit(1);
       }
     }
-    if (!control_queue.empty()) {
-      // again, leaving this as a "queue"/vector for the above reasons
-      // even though it currently will only pull the first
-      ControlledGate *g = control_queue.at(0);
-      return collapseMCMT(M_Vec, g->toMatrix(), g->controlWireIdx,
+
+    return {controlGate, M_Vec};
+  }
+
+private:
+  Matrix toTransformationAux() const {
+    auto pti = toPreTensorInfo();
+    if (pti.first) {
+      auto g = pti.first.value();
+      return collapseMCMT(pti.second, g->toMatrix(), g->controlWireIdx,
                           g->targetWireIdx);
     } else {
-      return tensorSeries(M_Vec);
+      return tensorSeries(pti.second);
     }
   }
 };
@@ -567,8 +580,8 @@ public:
   size_t nQubits;
   vector<TimeSlice *> program;
 
-  Circuit(size_t n) : nQubits(n) {};
-  Circuit(vector<TimeSlice *> s, size_t n) : nQubits(n), program(s) {};
+  Circuit(size_t n) : nQubits(n){};
+  Circuit(vector<TimeSlice *> s, size_t n) : nQubits(n), program(s){};
 
   void addTimeSlice(TimeSlice *TS) { program.push_back(TS); }
 
@@ -798,9 +811,9 @@ Circuit parseCircuitDiagram(string D) {
 }
 
 /*
-#This is a slightly different version of Grover's algo, the one below is mildly more efficient but I'm still testing if it works on
-#a variety of cases
-Circuit groversCircuit(int nQubits, string SV_String, size_t iters = 1) {
+#This is a slightly different version of Grover's algo, the one below is mildly
+more efficient but I'm still testing if it works on #a variety of cases Circuit
+groversCircuit(int nQubits, string SV_String, size_t iters = 1) {
   // setup state vector and operator circuit
   StateVector SV = makeTargetStateVector(SV_String);
   Circuit Grover(nQubits);
