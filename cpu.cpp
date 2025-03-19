@@ -309,12 +309,12 @@ Matrix collapseMCMT(vector<Matrix> M_Vec, Matrix U, vector<size_t> control,
   // here to handle if the ctrl and targs are just 1
   if (control.size() == 1 && target.size() == 1) {
     return collapseControlledMatrixVector(M_Vec, U, control.at(0),
-    target.at(0));
+                                          target.at(0));
   }
 
   vector<vector<int>> carts = cartesian_product_01(control.size());
 
-  //# of tensor vectors is 2^(# of controls)
+  // # of tensor vectors is 2^(# of controls)
   vector<vector<Matrix>> tensors(carts.size(), M_Vec);
 
   for (int t = 0; t < tensors.size(); t++) {
@@ -364,15 +364,15 @@ public:
   }
 
 protected:
-  OneQubitGate(){};
-  OneQubitGate(size_t w) : wireIdx(w){};
+  OneQubitGate() {};
+  OneQubitGate(size_t w) : wireIdx(w) {};
 };
 
 class ControlledGate : public Gate {
 public:
   vector<size_t> controlWireIdx;
   vector<size_t> targetWireIdx;
-  //TODO fix the to string to handle multiple
+  // TODO fix the to string to handle multiple
   virtual string toString() const override {
     ostringstream oss;
     oss << "(" << toGateString() << " " << controlWireIdx.at(0) << " "
@@ -381,18 +381,19 @@ public:
   }
 
 protected:
-  ControlledGate(){};
+  ControlledGate() {};
   ControlledGate(size_t c, size_t t) {
     controlWireIdx = {c};
     targetWireIdx = {t};
   };
-  ControlledGate(vector<size_t> c, vector<size_t> t) : controlWireIdx(c), targetWireIdx(t){};
+  ControlledGate(vector<size_t> c, vector<size_t> t)
+      : controlWireIdx(c), targetWireIdx(t) {};
 };
 
 class H_Gate : public OneQubitGate {
 public:
-  H_Gate(){};
-  H_Gate(size_t w) : OneQubitGate(w){};
+  H_Gate() {};
+  H_Gate(size_t w) : OneQubitGate(w) {};
 
   virtual string toGateString() const override { return "H"; };
   virtual Matrix toMatrix() const override {
@@ -403,8 +404,8 @@ public:
 
 class X_Gate : public OneQubitGate {
 public:
-  X_Gate(){};
-  X_Gate(size_t w) : OneQubitGate(w){};
+  X_Gate() {};
+  X_Gate(size_t w) : OneQubitGate(w) {};
 
   virtual string toGateString() const override { return "X"; };
   virtual Matrix toMatrix() const override {
@@ -415,8 +416,8 @@ public:
 
 class Z_Gate : public OneQubitGate {
 public:
-  Z_Gate(){};
-  Z_Gate(size_t w) : OneQubitGate(w){};
+  Z_Gate() {};
+  Z_Gate(size_t w) : OneQubitGate(w) {};
 
   virtual string toGateString() const override { return "Z"; };
   virtual Matrix toMatrix() const override {
@@ -428,8 +429,8 @@ public:
 
 class CX_Gate : public ControlledGate {
 public:
-  CX_Gate(){};
-  CX_Gate(size_t c, size_t t) : ControlledGate(c, t){};
+  CX_Gate() {};
+  CX_Gate(size_t c, size_t t) : ControlledGate(c, t) {};
   virtual string toGateString() const override { return "CX"; };
   virtual Matrix toMatrix() const override {
     return {{{0, 0}, {1, 0}}, //
@@ -439,8 +440,8 @@ public:
 
 class CZ_Gate : public ControlledGate {
 public:
-  CZ_Gate(){};
-  CZ_Gate(size_t c, size_t t) : ControlledGate(c, t){};
+  CZ_Gate() {};
+  CZ_Gate(size_t c, size_t t) : ControlledGate(c, t) {};
   virtual string toGateString() const override { return "CZ"; };
   virtual Matrix toMatrix() const override {
     return {{{1, 0}, {0, 0}}, {{0, 0}, {-1, 0}}};
@@ -448,15 +449,15 @@ public:
 };
 
 class CU_Gate : public ControlledGate {
-  protected:
-    Matrix U;
-  public:
-    CU_Gate(){};
-    CU_Gate(vector<size_t> c, vector<size_t> t, Matrix u) : U(u), ControlledGate(c, t){};
-    virtual string toGateString() const override { return "CU"; };
-    virtual Matrix toMatrix() const override {
-      return U;
-    };
+protected:
+  Matrix U;
+
+public:
+  CU_Gate() {};
+  CU_Gate(vector<size_t> c, vector<size_t> t, Matrix u)
+      : U(u), ControlledGate(c, t) {};
+  virtual string toGateString() const override { return "CU"; };
+  virtual Matrix toMatrix() const override { return U; };
 };
 
 class TimeSlice {
@@ -467,7 +468,7 @@ public:
 
 class PeekTimeSlice : public TimeSlice {
 public:
-  PeekTimeSlice(){};
+  PeekTimeSlice() {};
   virtual string toString() const override { return "(peek)"; }
 };
 
@@ -508,9 +509,9 @@ public:
   size_t nQubits;
 
   GateTimeSlice(vector<Gate *> _gates, size_t _nQubits)
-      : gates(_gates), nQubits(_nQubits){};
+      : gates(_gates), nQubits(_nQubits) {};
 
-  GateTimeSlice(size_t nQ) : nQubits(nQ){};
+  GateTimeSlice(size_t nQ) : nQubits(nQ) {};
 
   void addGate(Gate *g) { gates.push_back(g); }
 
@@ -554,8 +555,8 @@ private:
       // again, leaving this as a "queue"/vector for the above reasons
       // even though it currently will only pull the first
       ControlledGate *g = control_queue.at(0);
-      return collapseMCMT(
-            M_Vec, g->toMatrix(), g->controlWireIdx, g->targetWireIdx);
+      return collapseMCMT(M_Vec, g->toMatrix(), g->controlWireIdx,
+                          g->targetWireIdx);
     } else {
       return tensorSeries(M_Vec);
     }
@@ -567,8 +568,8 @@ public:
   size_t nQubits;
   vector<TimeSlice *> program;
 
-  Circuit(size_t n) : nQubits(n){};
-  Circuit(vector<TimeSlice *> s, size_t n) : nQubits(n), program(s){};
+  Circuit(size_t n) : nQubits(n) {};
+  Circuit(vector<TimeSlice *> s, size_t n) : nQubits(n), program(s) {};
 
   void addTimeSlice(TimeSlice *TS) { program.push_back(TS); }
 
@@ -585,9 +586,7 @@ public:
   }
 
   // Computes the final state vector of the circuit
-  StateVector run(StateVector SV) {
-    return runToPosition(SV, program.size());
-  }
+  StateVector run(StateVector SV) { return runToPosition(SV, program.size()); }
 
   size_t operationsCount() {
     size_t count = 0;
@@ -797,4 +796,43 @@ Circuit parseCircuitDiagram(string D) {
     }
   }
   return circuit;
+}
+
+// Grovers function
+// void GroversAlgo(int nQubits, string SV_String){
+//   //setup state vector and operator circuit
+//   StateVector SV = makeTargetStateVector(SV_String);
+//   Circuit Grov_Oper(nQubits);
+
+//   //oracle for SV configuration
+//     //set MCMT Z operation on |1> qubits in SV
+//   GateTimeSlice()
+//   for(auto c : SV){
+
+//   }
+
+//   //diffusion operator
+// }
+
+void groversCircuit(int nQubits, string SV_String) {
+  // setup state vector and operator circuit
+  StateVector SV = makeTargetStateVector(SV_String);
+  Circuit Grover(nQubits);
+  vector<size_t> one_ind;
+  vector<size_t> zero_ind;
+
+  // Init
+  GateTimeSlice TS_AllSuperposition(nQubits);
+  for (int i = 0; i < nQubits; i++) {
+    TS_AllSuperposition.addGate(new H_Gate(i));
+    if (SV.at(i).x == 0) {
+      one_ind.push_back(i);
+    }
+  }
+
+  // Oracle
+
+  // Diffusion
+
+  // Repeat???
 }
