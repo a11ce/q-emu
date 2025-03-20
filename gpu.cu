@@ -5,7 +5,7 @@ using ResultVector = vector<StateVector>;
 
 __device__ void cuMatrixVectorMultiply(size_t sLen, Complex *inV, Complex *outV,
                                        Complex *M) {
-  size_t idy = threadIdx.x;
+  size_t idy = (blockIdx.x * 1024) + threadIdx.x;
   if (idy >= sLen) {
     return;
   }
@@ -73,7 +73,6 @@ __global__ void QTensorKernel(size_t nMatrices, size_t matrixSideLength,
 
 void lowerMatrix(Matrix m, Complex *matrices, size_t baseOffset) {
   Complex *bp = matrices + baseOffset;
-  //  cerr << "bp is " << bp << "\n";
   for (size_t idy = 0; idy < m.size(); idy++) {
     for (size_t idx = 0; idx < m.size(); idx++) {
       bp[(idy * m.size()) + idx] = m[idy][idx];
@@ -117,13 +116,6 @@ int ceilDiv(int a, int b) { return ceil((float)a / float(b)); }
 
 Complex *gpu_toTransformationMatrix(
     pair<optional<ControlledGate *>, vector<Matrix>> pti) {
-  if (pti.first) {
-    // TODO on gpu
-    // exit(1);
-    /*auto g = pti.first.value();
-    return collapseMCMT(pti.second, g->toMatrix(), g->controlWireIdx,
-                        g->targetWireIdx);*/
-  }
   vector<Matrix> series = pti.second;
   size_t matrixSideLength = series[0].size();
   size_t sizeOfMatrix = sizeof(Complex) * matrixSideLength * matrixSideLength;
@@ -131,19 +123,15 @@ Complex *gpu_toTransformationMatrix(
   size_t sizeOfMatrices = sizeOfMatrix * nMatrices;
 
   Complex *matrices = (Complex *)malloc(sizeOfMatrix * nMatrices);
-  //  cerr << "lowering for tensor\n";
 
   size_t pc = 0;
   for (auto mat : series) {
     lowerMatrix(mat, matrices, pc * matrixSideLength * matrixSideLength);
   }
 
-  // cerr << "end lowering for tensor\n";
-
   Complex *d_matrices;
   cudaMalloc((void **)&d_matrices, sizeOfMatrices);
   cudaMemcpy(d_matrices, matrices, sizeOfMatrices, cudaMemcpyHostToDevice);
-  // cerr << "end d_matrices copy\n";
 
   size_t outMatrixSideLength = pow(2, series.size());
   size_t totalOutMatrixSize =
@@ -155,11 +143,7 @@ Complex *gpu_toTransformationMatrix(
   Complex *d_scratchMatrix;
   cudaMalloc((void **)&d_outMatrix, totalOutMatrixSize);
   cudaMalloc((void **)&d_scratchMatrix, totalOutMatrixSize);
-  //  cudaMemcpy(d_outMatrix, matrices, totalOutMatrixSize,
-  //  cudaMemcpyHostToDevice);
 
-  // cerr << "end copying\n";
-  //  TODO dims
   dim3 dimBlock(32, 32);
   dim3 dimGrid(ceilDiv(outMatrixSideLength, 32),
                ceilDiv(outMatrixSideLength, 32));
@@ -167,16 +151,11 @@ Complex *gpu_toTransformationMatrix(
                                        d_outMatrix, d_scratchMatrix);
   cudaMemcpy(outMatrix, d_outMatrix, totalOutMatrixSize,
              cudaMemcpyDeviceToHost);
-  // cerr << "end tensoring\n";
   return outMatrix;
 }
 
-ResultVector runCircuitOnGPU(Circuit C, StateVector SV) {
-  /* cerr << "compiling\n";
-
-   C.compile();
-
-   cerr << "compiled\n";*/
+ResultVector runCircuitOnGPU(Circuit C, StateVector SV, int onlyTensor,
+                             size_t iters) {
   size_t matrixSideLength = pow(2, C.nQubits);
 
   size_t sizeOfComplex = sizeof(Complex); // 2 * sizeof(float);
@@ -185,37 +164,28 @@ ResultVector runCircuitOnGPU(Circuit C, StateVector SV) {
 
   Complex *matrices = (Complex *)malloc(sizeOfMatrix * C.operationsCount());
 
-  //  cerr << "base matrices is " << matrices << "\n";
-
   size_t pc = 0;
 
-  //  cerr << "start tensoring\n";
+  cerr << "tensoring\n";
 
-  cerr << C.program.size();
   for (auto slice : C.program) {
     if (auto *op = dynamic_cast<GateTimeSlice *>(slice)) {
-      // cerr << "start lowering\n";
 
       Complex *transformationMatrix =
           gpu_toTransformationMatrix(op->toPreTensorInfo());
-      /*
-  lowerMatrix(transformationMatrix, op->toTransformation(), matrices,
-              pc * matrixSideLength * matrixSideLength);*/
-      copyRMatrix(transformationMatrix,
-                  matrices + (pc * matrixSideLength * matrixSideLength),
-                  matrixSideLength);
 
-      // cerr << "end lowering\n";
+      if (!onlyTensor) {
+        copyRMatrix(transformationMatrix,
+                    matrices + (pc * matrixSideLength * matrixSideLength),
+                    matrixSideLength);
+      }
       pc++;
-      // cerr << "tick\n";
-    } else {
-      cerr << "no-op after compilation\n";
-      // exit(1);
     }
   }
-  //  cerr << "end tensoring\n";
-
-  // return {SV};
+  if (onlyTensor) {
+    return {};
+  }
+  cerr << "running\n";
 
   size_t nOps = C.program.size();
 
@@ -227,71 +197,55 @@ ResultVector runCircuitOnGPU(Circuit C, StateVector SV) {
   size_t totalOutVectorSize = nOps * matrixSideLength * sizeof(Complex);
   Complex *d_outVectors;
   cudaMalloc((void **)&d_outVectors, totalOutVectorSize);
-  // cerr << "launching\n";
 
-  for (size_t idx = 0; idx < 100; idx++) {
+  for (size_t idx = 0; idx < iters; idx++) {
 
-    Complex *h_inVector =
-        lowerStateVector(SV); // malloc(sizeof(Complex) * matrixSideLength);
-                              //    lowerStateVector(h_inVector, SV);
+    Complex *h_inVector = lowerStateVector(SV);
     Complex *d_inVector;
     cudaMalloc((void **)&d_inVector, sizeof(Complex) * matrixSideLength);
     cudaMemcpy(d_inVector, h_inVector, sizeof(Complex) * matrixSideLength,
                cudaMemcpyHostToDevice);
 
-    // dim3 dimGrid(1, 1);
-    dim3 dimGrid(1);
-    // TODO wrong add multi blocks
+    dim3 dimGrid(ceilDiv(matrixSideLength, 1024));
     dim3 dimBlock(1024);
 
     QProgramKernel<<<dimGrid, dimBlock>>>(nOps, matrixSideLength, d_matrices,
                                           d_inVector, d_outVectors);
-    //  cerr << "launched\n";
 
     Complex *h_outVectors = (Complex *)malloc(totalOutVectorSize);
 
     cudaMemcpy(h_outVectors, d_outVectors, totalOutVectorSize,
                cudaMemcpyDeviceToHost);
-
-    //  cerr << "memcpyd\n";
   }
-  // cerr << "done";
-  //  printOutVectors(h_outVectors, matrixSideLength, nOps);
   return {};
 }
 
 int main(int argc, char *argv[]) {
-  int v = atoi(argv[1]); /*auto circuit = parseCircuitDiagram("|0>-H-.---x\n"
-                                    "|0>-H-Z-H-x\n");*/
-                         /*auto c = parseCircuitDiagram("|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n"
-                                                      "|0>HHH\n");*/
-  Circuit c = groversCircuit_NR(10, "1101010101");
-  // StateVector SV = makeStateVector(10);
-  // c.compile();
-  if (v == 1) {
-    cerr << "cpu\n";
-    // c.compile();
-    c.run(makeStateVector(13));
-  } else if (v == 0) {
-    cerr << "gpu\n";
-    //  StateVector SV = makeStateVector(10);
-    runCircuitOnGPU(c, makeStateVector(10));
-  } else {
+  if (argc < 3) {
+    cerr << "usage: ./q-emu [0|1] [0|1]. First 1 is use GPU, second 1 is only "
+            "tensor\n";
     return 0;
   }
-  // sixteen.run(makeStateVector(16));
-  // printStateVector(eight.run(makeStateVector(8)));
 
-  //  auto res = runCircuitOnGPU(eight, makeStateVector(8));
+  int useGPU = atoi(argv[1]);
+  int onlyTensor = atoi(argv[2]);
+  Circuit c = groversCircuit_NR(10, "1101010101");
+
+  if (useGPU == 0) {
+    cerr << "cpu\n";
+    cerr << "tensoring\n";
+    c.preTensor(); // this changes the stored program
+    if (onlyTensor) {
+      return 0;
+    }
+    cerr << "running\n";
+    for (size_t idx = 0; idx < 100; idx++) {
+      c.run(makeStateVector(13));
+    }
+  } else if (useGPU == 1) {
+    cerr << "gpu\n";
+    runCircuitOnGPU(c, makeStateVector(10), onlyTensor, 100);
+  } else {
+    cerr << "bad arg. run with no args for help\n";
+  }
 }

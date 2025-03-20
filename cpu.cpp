@@ -201,20 +201,16 @@ Matrix tensorProduct(Matrix M, Matrix N) {
 }
 
 Matrix tensorSeries(vector<Matrix> M_Vec) {
-  //  cerr << "start tensorseries\n";
   Matrix U = M_Vec.at(0);
   for (int i = 1; i < M_Vec.size(); i++) {
     U = tensorProduct(U, M_Vec.at(i));
   }
-  //  cerr << "end tensorseries\n";
-
   return U;
 }
 
 Matrix matrixMultiply(Matrix M, Matrix N) {
   // implied : if M.size() = M.at(0).size() & (same for N) & M.size() ==
   // N.size()
-  cerr << "start matrixmult\n";
   Matrix P = initSquareMatrix(M.size());
   int numRows = M.size();
   int numCols = M.size();
@@ -227,7 +223,6 @@ Matrix matrixMultiply(Matrix M, Matrix N) {
       }
     }
   }
-  cerr << "end matrixmult\n";
 
   return P;
 }
@@ -489,7 +484,6 @@ public:
     // Calculating matrix at timeslice from R to L
     // CompiledTimeslice C_TS;
     // vector<Matrix> TS_Vec;
-    cerr << "start compiling a slice\n";
     components = TS.size();
 
     Matrix M = TS.at(TS.size() - 1)->toTransformation();
@@ -497,7 +491,6 @@ public:
       M = matrixMultiply(M, TS.at(i)->toTransformation());
     }
     theMatrix = M;
-    cerr << "end compiling a slice\n";
   }
 
 private:
@@ -542,7 +535,6 @@ function wrap here. */
 public:
   pair<optional<ControlledGate *>, vector<Matrix>> toPreTensorInfo(
       /*vector<Gate *> _gates, int num_of_wires*/) const {
-    //    cerr << "start transform\n";
     vector<Matrix> M_Vec(nQubits, I);
     // currently testing an implementation allowing for more than one
     // controlled operation per slice
@@ -629,7 +621,6 @@ public:
   }
 
   void preTensor() {
-    cerr << "start pretensor\n";
     vector<TimeSlice *> newProgram;
     for (auto slice : program) {
       if (auto *op = dynamic_cast<OpTimeSlice *>(slice)) {
@@ -637,7 +628,6 @@ public:
       }
     }
     program = newProgram;
-    cerr << "end pretensor\n";
   }
 
   // Helpers //
@@ -668,7 +658,6 @@ optional<Gate *> tryParseOneQubitGate(char c) {
 
 optional<Gate *> tryParseControlledGate(char c) {
   switch (c) {
-  // TODO this is wrong because uncontrolled z exists
   case 'X':
     return new CX_Gate();
   case 'Z':
@@ -822,71 +811,6 @@ Circuit parseCircuitDiagram(string D) {
   return circuit;
 }
 
-/*
-#This is a slightly different version of Grover's algo, the one below is mildly
-more efficient but I'm still testing if it works on #a variety of cases Circuit
-groversCircuit(int nQubits, string SV_String, size_t iters = 1) {
-  // setup state vector and operator circuit
-  StateVector SV = makeTargetStateVector(SV_String);
-  Circuit Grover(nQubits);
-  vector<size_t> one_ind;
-  vector<size_t> zero_ind;
-  //this is probs not useful but im lazy
-  vector<size_t> n_vec;
-  // Init
-  GateTimeSlice* HGate_TS = new GateTimeSlice(nQubits);
-  GateTimeSlice* XGate_TS = new GateTimeSlice(nQubits);
-  for (int i = 0; i < nQubits; i++) {
-    HGate_TS->addGate(new H_Gate(i));
-    XGate_TS->addGate(new X_Gate(i));
-    n_vec.push_back(i);
-    if (SV.at(i).x == 1) {
-      one_ind.push_back(i);
-    } else {
-      zero_ind.push_back(i);
-    }
-  }
-
-  // Oracle -> marks our desired state using phase-flips on the appr. 1 qubits
-  GateTimeSlice* Oracle_TS = new GateTimeSlice(nQubits);
-  if (one_ind.size() == 1) {
-    Oracle_TS->addGate(new Z_Gate(one_ind.at(0)));
-  } else if(one_ind.size() > 1) {
-    // CU_Gate(vector<int>)
-    Oracle_TS->addGate(new CU_Gate(vector<size_t>(one_ind.begin(), one_ind.end()
-- 1), {one_ind.at(one_ind.size() - 1)}, Z));
-  }
-
-  // Diffusion
-  GateTimeSlice* DiffPhaseFlip_TS = new GateTimeSlice(nQubits);
-  DiffPhaseFlip_TS->addGate(new CU_Gate(vector<size_t>(n_vec.begin(),
-n_vec.end() - 1), {n_vec.at(nQubits - 1)}, Z));
-
-  //Smash it all together!
-    // See
-https://github.com/Qiskit/textbook/blob/main/notebooks/ch-algorithms/grover.ipynb
-- Example 3 for why this ordering
-  //Init
-  Grover.addTimeSlice(HGate_TS);
-
-  //run for n iterations stacking this bad boy up with successive oracle +
-diffusion (HGate_TS + XGate_TS + DiffPhaseFlip_TS + XGate_TS + HGate_TS) for(int
-i = 0; i < iters; i++) { cout << "Stacking Grover's Operator Iteration: " << i +
-1 << "\n";
-    //Oracle
-    Grover.addTimeSlice(Oracle_TS);
-    //Amplification
-    Grover.addTimeSlice(HGate_TS);
-    Grover.addTimeSlice(XGate_TS);
-    Grover.addTimeSlice(DiffPhaseFlip_TS);
-    Grover.addTimeSlice(XGate_TS);
-    Grover.addTimeSlice(HGate_TS);
-  }
-
-  cout << "Finished Creating Grover Circuit w/ " << iters << " Grov. Op Cycles!
-\n"; return Grover;
-}
-*/
 Circuit groversCircuit_NR(int nQubits, string SV_String, size_t iters = 1) {
   // setup state vector and operator circuit
   StateVector SV = makeTargetStateVector(SV_String);
